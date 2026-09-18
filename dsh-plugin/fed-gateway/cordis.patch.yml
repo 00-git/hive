@@ -1,0 +1,11 @@
+# hive-fed-gateway — bundle layer
+#
+# Host-only. Applied automatically by `dsh plugin add hive-fed-gateway`,
+# or copy this row into the profile's cordis.patch.yml (local dev path).
+
+- insert:
+    - id: hive-fed-gateway/host
+      name: hive-fed-gateway
+      config:
+        port: 3081
+        bindHost: 127.0.0.1

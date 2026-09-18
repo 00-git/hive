@@ -1,0 +1,12 @@
+# hive-fed-protocol — bundle layer
+#
+# Declared by package.json#dsh.bundle.patch. Applied automatically by
+# `dsh plugin --profile <name> add hive-fed-protocol`, or manually by copying
+# this row into ~/.dsh/cordis.patch.yml (local development path).
+#
+# Host-only: the protocol package has no browser half.
+
+- insert:
+    - id: hive-fed-protocol/host
+      name: hive-fed-protocol
+      config: {}

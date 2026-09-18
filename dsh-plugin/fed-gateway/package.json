@@ -1,0 +1,61 @@
+{
+  "name": "hive-fed-gateway",
+  "version": "0.1.0",
+  "description": "hive federation gateway dsh plugin: WS server, host registry, pairing (code->approve->token, revocable), directed task dispatch, JSONL audit, settings cards",
+  "type": "module",
+  "keywords": [
+    "dsh-plugin",
+    "hive",
+    "federation",
+    "gateway"
+  ],
+  "license": "MIT",
+  "main": "lib/host/index.js",
+  "types": "lib/host/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/host/index.d.ts",
+      "default": "./lib/host/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "hive-fedctl": "./bin/hive-fedctl.mjs",
+    "hive-p2p": "./bin/hive-p2p.mjs"
+  },
+  "files": [
+    "lib/",
+    "bin/",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsdown && node build-client.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.0",
+    "esbuild": "^0.25.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  }
+}

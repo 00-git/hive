@@ -1,0 +1,12 @@
+# hive-fed-host — bundle layer
+#
+# Host-only. Applied automatically by `dsh plugin add hive-fed-host`, or copy
+# this row into the profile's cordis.patch.yml (local dev path). Mount only on
+# machines that should join the federation as executors.
+
+- insert:
+    - id: hive-fed-host/host
+      name: hive-fed-host
+      config:
+        gatewayUrl: ws://127.0.0.1:3081/fed
+        deviceName: PC-2

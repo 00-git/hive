@@ -1,0 +1,39 @@
+{
+  "name": "hive-fed-protocol",
+  "version": "0.1.0",
+  "description": "hive federation wire protocol: openclaw-style three-frame protocol with device-token auth hard constraints; syncs data with dsh (ctx.* services, session log) and openclaw (wire format)",
+  "type": "module",
+  "keywords": [
+    "dsh-plugin",
+    "hive",
+    "federation"
+  ],
+  "license": "MIT",
+  "main": "lib/host/index.js",
+  "types": "lib/host/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/host/index.d.ts",
+      "default": "./lib/host/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  }
+}
