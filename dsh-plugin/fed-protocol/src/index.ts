@@ -2,15 +2,14 @@
  * hive-fed-protocol — host-half dsh plugin.
  *
  * Provides the `fedProtocol` service: the shared wire vocabulary (frames,
- * methods, errors) plus the authentication choke point used by both
- * hive-fed-gateway and hive-fed-host. Pure logic, zero I/O — transports live
- * in the gateway/host packages so this contract stays swappable (平台化约束:
- * 一切皆插件、可替换、可关闭).
+ * methods, errors), the self-sovereign identity primitives (identity.ts) and the
+ * single authorization choke point (auth.ts) used by both hive-fed-gateway and
+ * hive-fed-host. Pure logic, zero I/O — transports live in the peer packages so
+ * this contract stays swappable (平台化约束: 一切皆插件、可替换、可关闭).
  *
  * Model-visible ⟺ logged: nothing here reaches a model request; it only moves
  * bytes and validates boundaries.
  */
-import type { DeviceTokenStore } from './auth.js'
 import {
   MAX_PROTOCOL_VERSION,
   MIN_PROTOCOL_VERSION,
@@ -18,6 +17,8 @@ import {
   decodeFrame,
   negotiateProtocol,
   sanitizeAdvertisedCaps,
+  type AuthenticateParams,
+  type ChallengeOk,
   type ConnectParams,
   type FedEvent,
   type FedEventAck,
@@ -37,20 +38,42 @@ import {
   type AgentAskParams,
   type AgentTaskParams,
   type HostStateDigest,
+  type PeerAnnouncement,
   type TaskState,
+  type TrustApproveParams,
 } from './methods.js'
 import {
   FedCapability,
-  asDeviceToken,
-  authenticate,
-  hashToken,
-  issueDeviceToken,
-  tokenHashesEqual,
-  type DeviceId,
-  type DeviceIdentity,
-  type DeviceToken,
-  type IssuedToken,
+  authorize,
+  isFedCapability,
+  localTokenMatches,
+  type AuthorizationFailure,
+  type HandshakeProof,
+  type PeerIdentity,
+  type TrustStore,
 } from './auth.js'
+import {
+  computeSas,
+  createNonce,
+  deriveDeviceId,
+  formatDeviceId,
+  generateIdentity,
+  restoreIdentity,
+  signHandshake,
+  verifyHandshake,
+  type DeviceId,
+  type PeerIdentityMaterial,
+  type PrivateKeyPem,
+  type PublicKeyB64,
+} from './identity.js'
+import {
+  TrustTable,
+  type PendingTrust,
+  type TrustApprovalOutcome,
+  type TrustedPeerRow,
+  type TrustPersistence,
+  type TrustSnapshot,
+} from './trust.js'
 
 export const name = 'hive-fed-protocol'
 
@@ -79,16 +102,26 @@ export interface FedProtocolService {
   negotiateProtocol(params: ConnectParams): number
   sanitizeAdvertisedCaps(value: unknown): readonly FedCapability[]
   requiresIdempotencyKey(method: string): boolean
-  /** Single authentication choke point (禁止清单 enforcement). */
-  authenticate(
-    store: DeviceTokenStore,
-    presented: unknown,
+  /** Single authorization choke point (禁止清单 enforcement). */
+  authorize(
+    store: TrustStore,
+    proof: HandshakeProof,
     context: { readonly source: string; readonly declaredName?: unknown },
-  ): { identity: DeviceIdentity } | { error: 'unauthenticated' }
-  issueDeviceToken(deviceId: DeviceId): IssuedToken
-  hashToken(token: DeviceToken): string
-  tokenHashesEqual(a: string, b: string): boolean
-  asDeviceToken(value: unknown): DeviceToken | undefined
+  ): { identity: PeerIdentity } | { error: AuthorizationFailure }
+  /** Self-sovereign identity primitives — no issuer, no registry to consult. */
+  readonly identity: {
+    generate(): PeerIdentityMaterial
+    restore(publicKey: PublicKeyB64, privateKeyPem: PrivateKeyPem, createdAtMs?: number): PeerIdentityMaterial
+    deriveDeviceId(publicKey: PublicKeyB64): DeviceId
+    createNonce(): string
+    signHandshake(privateKeyPem: PrivateKeyPem, nonce: string, selfId: DeviceId, peerId: DeviceId): string
+    verifyHandshake(publicKey: PublicKeyB64, nonce: string, dialerId: DeviceId, acceptorId: DeviceId, signature: string): boolean
+    computeSas(publicKeyA: PublicKeyB64, publicKeyB: PublicKeyB64): string
+    formatDeviceId(deviceId: DeviceId): string
+  }
+  /** Loopback-only operator token check; NOT part of the federation identity model. */
+  localTokenMatches(presented: unknown, expected: string): boolean
+  isFedCapability(value: string): value is FedCapability
   fedError: typeof fedError
   toFedError: typeof toFedError
 }
@@ -104,11 +137,19 @@ export function apply(ctx: unknown, config?: Config): void {
     negotiateProtocol,
     sanitizeAdvertisedCaps,
     requiresIdempotencyKey,
-    authenticate,
-    issueDeviceToken,
-    hashToken,
-    tokenHashesEqual,
-    asDeviceToken,
+    authorize,
+    identity: {
+      generate: generateIdentity,
+      restore: restoreIdentity,
+      deriveDeviceId,
+      createNonce,
+      signHandshake,
+      verifyHandshake,
+      computeSas,
+      formatDeviceId,
+    },
+    localTokenMatches,
+    isFedCapability,
     fedError,
     toFedError,
   }
@@ -119,6 +160,9 @@ export function apply(ctx: unknown, config?: Config): void {
     throw new Error('hive-fed-protocol: host context does not expose provide(); not a cordis context')
   }
   candidate.provide('fedProtocol', service)
+  // Referenced so the config contract stays part of the audited apply() shape
+  // even while no option consumes it yet.
+  void resolved
 }
 
 // Re-exports for gateway/host packages (single import surface: hive-fed-protocol).
@@ -135,22 +179,29 @@ export {
   FedEventName as FedEventCatalog,
   IDEMPOTENT_METHODS,
   requiresIdempotencyKey,
-  asDeviceToken,
-  authenticate,
-  hashToken,
-  issueDeviceToken,
-  tokenHashesEqual,
+  authorize,
+  isFedCapability,
+  localTokenMatches,
   fedError,
   toFedError,
+  computeSas,
+  createNonce,
+  deriveDeviceId,
+  formatDeviceId,
+  generateIdentity,
+  restoreIdentity,
+  signHandshake,
+  verifyHandshake,
+  TrustTable,
 }
 export type {
   AgentAskParams,
   AgentTaskParams,
+  AuthenticateParams,
+  AuthorizationFailure,
+  ChallengeOk,
   ConnectParams,
   DeviceId,
-  DeviceIdentity,
-  DeviceToken,
-  DeviceTokenStore,
   FedError,
   FedEvent,
   FedEventAck,
@@ -159,9 +210,21 @@ export type {
   FedResponse,
   FedWireFrame,
   FedCapability as FedCapabilityType,
+  HandshakeProof,
   HelloOk,
   HostStateDigest,
-  IssuedToken,
+  PeerAnnouncement,
+  PeerIdentity,
+  PeerIdentityMaterial,
   PeerRole,
+  PendingTrust,
+  PrivateKeyPem,
+  PublicKeyB64,
   TaskState,
+  TrustApprovalOutcome,
+  TrustedPeerRow,
+  TrustPersistence,
+  TrustSnapshot,
+  TrustApproveParams,
+  TrustStore,
 }

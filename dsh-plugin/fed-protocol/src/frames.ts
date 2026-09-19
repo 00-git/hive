@@ -11,38 +11,103 @@
  * wire boundaries; trust TypeScript only inside same-process typed edges).
  */
 import { FedErrorCode, fedError, isFedError, type FedError } from './errors.js'
-import { FedCapability } from './auth.js'
+import { FedCapability, type DeviceId, type PublicKeyB64 } from './auth.js'
 
-/** Wire protocol version of this implementation. Bump on breaking frame changes. */
-export const PROTOCOL_VERSION = 1
+/**
+ * Wire protocol version. Bumped to 2 by the self-sovereign identity cut (D-020).
+ * v1 peers are REJECTED rather than half-supported: there is no meaningful
+ * translation between "an issuer told me who you are" and "you proved it
+ * yourself" — a bridge would just be the center server again, in disguise.
+ */
+export const PROTOCOL_VERSION = 2
 /** Oldest wire protocol this build accepts. */
-export const MIN_PROTOCOL_VERSION = 1
+export const MIN_PROTOCOL_VERSION = 2
 /** Newest wire protocol this build accepts. */
-export const MAX_PROTOCOL_VERSION = 1
+export const MAX_PROTOCOL_VERSION = 2
 
-/** Connection roles. A host is a full agent runtime; a user is a chat surface. */
-export type PeerRole = 'gateway' | 'host' | 'user'
+/**
+ * Connection roles. `host` is a federated peer runtime (it accepts directed
+ * tasks); `user` is the LOCAL operator surface — the CLI/UI gated by the
+ * loopback user token.
+ *
+ * There is deliberately no `gateway` role: every peer both dials and accepts, so
+ * "who happened to accept this socket" carries no authority.
+ */
+export type PeerRole = 'host' | 'user'
 
-/** connect.req params — the first frame on any connection. */
+/**
+ * connect.req params — the first frame on any connection.
+ *
+ * Note what is NOT here: no credential. A connect frame only *claims* an
+ * identity; the claim becomes meaningful after step 2 (authenticate) proves
+ * possession of the private key. A signature is required even for an
+ * already-trusted peer — otherwise copying a trusted peer's PUBLIC key would be
+ * enough to impersonate it.
+ */
 export interface ConnectParams {
   role: PeerRole
-  /** Human-readable device label; diagnostic only, never an identity source. */
-  deviceName: string
   protocol: { readonly min: number; readonly max: number }
-  /** Present on role:"host" only when presenting a pairing token or device token. */
-  deviceToken?: string
-  /** Host capability advertisement; verified server-side, not trusted. */
+  /** Self-declared public key; the acceptor derives the id from it. */
+  publicKey?: PublicKeyB64
+  /**
+   * The dialer's own fresh nonce. The acceptor signs it, which is what proves
+   * the ACCEPTOR's identity to the dialer — without this, verification would be
+   * one-way and an attacker could impersonate the acceptor.
+   */
+  clientNonce?: string
+  /**
+   * Operator-facing label for this peer, editable locally at any time. Cosmetic
+   * by construction: display and dispatch-by-name only, never an identity source.
+   */
+  nickname?: string
+  /** Present on role:"user": the LOCAL loopback token. Never a federation credential. */
+  userToken?: string
+  /** Capability advertisement; re-validated locally, never trusted from the wire. */
   caps?: readonly FedCapability[]
 }
 
-/** connect res payload on success. */
+/** authenticate.req params — step 2: prove possession of the claimed key. */
+export interface AuthenticateParams {
+  /** Ed25519 over the acceptor's nonce, bound to both peer ids. */
+  signature: string
+}
+
+/**
+ * connect res payload (role:"host"). Always a challenge: a fresh nonce the peer
+ * must sign, plus the SAS the two operators compare out of band.
+ */
+export interface ChallengeOk {
+  protocol: number
+  /** Fresh, per-connection, single-use. Never reused, never sent in two places. */
+  nonce: string
+  /** Six digits derived from BOTH public keys; an attacker swapping a key changes it. */
+  sas: string
+  /** The acceptor's own id, so the dialer can rebuild the canonical signed message. */
+  acceptorId: DeviceId
+  /** How the acceptor wants to be shown. The dialer cannot infer this from hello. */
+  acceptorNickname: string
+  /** The acceptor's public key — the dialer needs it to verify the proof below. */
+  acceptorPublicKey: PublicKeyB64
+  /** The acceptor's proof over the dialer's clientNonce. Makes authentication mutual. */
+  signature: string
+  /** Server wall clock so peers can bound drift for deadline math. */
+  serverTimeMs: number
+}
+
+/** authenticate res payload on success. */
 export interface HelloOk {
   protocol: number
-  peer: { role: PeerRole; deviceName: string }
-  /** Server wall clock so hosts can bound drift for deadline math. */
+  peer: { role: PeerRole; deviceId: DeviceId; nickname: string }
+  /** Server wall clock so peers can bound drift for deadline math. */
   serverTimeMs: number
-  /** Present when a host connected without a (valid) token: pairing is pending. */
-  pairing?: { readonly code: string; readonly expiresAtMs: number }
+  /**
+   * False when the signature verified but no operator has confirmed the SAS yet.
+   * The connection is held open (the peer may only send trust negotiation), and
+   * the local operator is prompted. Never treat trusted:false as authorized.
+   */
+  trusted: boolean
+  /** Granted capabilities, from the LOCAL trust table — not from the peer's advertisement. */
+  caps?: readonly FedCapability[]
 }
 
 /** Request frame. */

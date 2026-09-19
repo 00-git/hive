@@ -1,5 +1,5 @@
-import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { appendFileSync, mkdirSync } from "node:fs";
 //#region src/audit.ts
 /**
 * JSONL audit for host-side permission decisions (安全模型第 4 条：host 侧双写).

@@ -21,8 +21,11 @@ if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].re
     return index >= 0 ? process.argv[index + 1] : undefined
   }
   runStandalone({
-    gatewayUrl: argValue('--gateway'),
-    deviceName: argValue('--name'),
+    // Repeatable --peer, or one --peers with a comma-separated list.
+    peerUrls: process.argv.flatMap((arg, index) =>
+      arg === '--peer' || arg === '--peers' ? (process.argv[index + 1] ?? '').split(',').filter((url) => url.length > 0) : []
+    ),
+    nickname: argValue('--name'),
     stateDir: argValue('--state-dir'),
     whitelistDirs: argValue('--allow-dir') !== undefined ? [argValue('--allow-dir') as string] : undefined,
   })

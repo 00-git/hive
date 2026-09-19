@@ -1,4 +1,4 @@
-import { t as HostClient } from "./client-BkU_mxdE.js";
+import { t as HostClient } from "./client-BmPB8yBL.js";
 //#region src/standalone.ts
 /**
 * Standalone host runner source (built to lib/host/standalone.js, wrapped by bin/hive-fed-host.mjs).
@@ -19,8 +19,8 @@ if (process.argv[1] !== void 0 && import.meta.url.endsWith(process.argv[1].repla
 		return index >= 0 ? process.argv[index + 1] : void 0;
 	}
 	runStandalone({
-		gatewayUrl: argValue("--gateway"),
-		deviceName: argValue("--name"),
+		peerUrls: process.argv.flatMap((arg, index) => arg === "--peer" || arg === "--peers" ? (process.argv[index + 1] ?? "").split(",").filter((url) => url.length > 0) : []),
+		nickname: argValue("--name"),
 		stateDir: argValue("--state-dir"),
 		whitelistDirs: argValue("--allow-dir") !== void 0 ? [argValue("--allow-dir")] : void 0
 	});

@@ -1,0 +1,33 @@
+{
+  "name": "hive-fed-peer",
+  "version": "0.1.0",
+  "description": "hive federation node shared layer: mutual Ed25519 handshake state machines, self-sovereign identity store, operator-confirmed trust table, known-peer address book. Compiled into hive-fed-gateway and hive-fed-host; not installed on its own.",
+  "type": "module",
+  "private": true,
+  "keywords": [
+    "hive",
+    "federation",
+    "peer"
+  ],
+  "license": "MIT",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3"
+  }
+}

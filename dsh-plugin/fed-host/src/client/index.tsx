@@ -94,23 +94,27 @@ function textField(text: string): FieldWrite | undefined {
 
 const FIELDS: readonly FieldSpec[] = [
   {
-    field: 'gatewayUrl',
-    label: '网关地址',
-    hint: 'ws://<网关IP>:3081/fed；经 OpenP2P 组网时填本地转发端口。保存后立即重连。',
-    placeholder: 'ws://127.0.0.1:3081/fed',
-    fallback: 'ws://127.0.0.1:3081/fed',
+    field: 'peerUrls',
+    label: '对端地址',
+    hint: '逗号分隔，如 ws://127.0.0.1:3082/fed。经 OpenP2P 组网时，每台对端填一条本地转发端口。',
+    placeholder: 'ws://127.0.0.1:3082/fed',
+    fallback: '',
     parse: (text) => {
       const write = textField(text)
-      // A typo here would otherwise be silently replaced by the default at the
-      // host half, so refuse anything that is not a websocket URL.
-      if (write?.kind === 'set' && !/^wss?:\/\/\S+$/i.test(String(write.value))) return undefined
+      // Validate EVERY entry: a single typo that silently falls back to a
+      // default leaves one peer that never connects, with nothing on screen to
+      // say why. Refusing the save is the honest failure.
+      if (write?.kind === 'set') {
+        const urls = String(write.value).split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+        if (urls.length === 0 || urls.some((entry) => !/^wss?:\/\/\S+$/i.test(entry))) return undefined
+      }
       return write
     },
   },
   {
-    field: 'deviceName',
-    label: '设备名称',
-    hint: '网关主机列表上的显示名；留空则回落到主机名。',
+    field: 'nickname',
+    label: '本机昵称',
+    hint: '其他机器的主机列表上显示这个名字。纯展示，随时可改，不参与身份认定。',
     placeholder: 'PC-2',
     fallback: '',
     parse: textField,
@@ -362,10 +366,10 @@ function Card(props: { form: CardForm; snapshot: ScopeSnapshot }): React.ReactEl
  */
 function Summary(props: { snapshot: ScopeSnapshot }): React.ReactElement {
   const value = props.snapshot.value ?? {}
-  const gatewayUrl = String(value.gatewayUrl ?? 'ws://127.0.0.1:3081/fed')
-  const deviceName = typeof value.deviceName === 'string' && value.deviceName.length > 0 ? value.deviceName : '未命名'
+  const peerUrls = String(value.peerUrls ?? '')
+  const nickname = typeof value.nickname === 'string' && value.nickname.length > 0 ? value.nickname : '未命名'
   const overridden = FIELDS.some((spec) => userCarries(props.snapshot.user, spec.field))
-  return <>{`→ ${gatewayUrl} · ${deviceName}${overridden ? ' · 已覆盖' : ''}`}</>
+  return <>{`→ ${peerUrls.length > 0 ? peerUrls : '(未配置对端)'} · ${nickname}${overridden ? ' · 已覆盖' : ''}`}</>
 }
 
 /**

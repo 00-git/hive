@@ -23,10 +23,14 @@ function normalizeConfig(value: Partial<GatewaySettings> & GatewayConfig): Gatew
   const port = typeof value.port === 'number' && Number.isInteger(value.port) && value.port >= 1 && value.port <= 65_535
     ? value.port
     : 3081
-  const bindHost = typeof value.bindHost === 'string' && value.bindHost.length > 0 ? value.bindHost : '127.0.0.1'
+  // Empty bindHost is MEANINGFUL: it means "auto-detect the VPN interface, and
+  // refuse to listen when there is none". Substituting a default address here
+  // would silently throw away the fail-closed behaviour the operator chose.
+  const bindHost = typeof value.bindHost === 'string' ? value.bindHost.trim() : ''
   return {
     port,
     bindHost,
+    nickname: typeof value.nickname === 'string' ? value.nickname.trim() : '',
     auditPath: typeof value.auditPath === 'string' ? value.auditPath : undefined,
     stateDir: typeof value.stateDir === 'string' ? value.stateDir : undefined,
   }
@@ -104,11 +108,12 @@ export function apply(ctx: unknown, config: Config = {}): void {
       } }).settings
       if (settings === undefined) return
       /** Schema defaults, layered under the composition entry the loader resolved. */
-      const defaults: GatewaySettings = { port: 3081, bindHost: '127.0.0.1' }
+      const defaults: GatewaySettings = { port: 3081, bindHost: '', nickname: '' }
       /** The composition entry: the patch row's config, and the install fallback. */
       const entry: GatewaySettings = {
         port: typeof config.port === 'number' ? config.port : defaults.port,
         bindHost: typeof config.bindHost === 'string' ? config.bindHost : defaults.bindHost,
+        nickname: typeof config.nickname === 'string' ? config.nickname : defaults.nickname,
       }
       /**
        * The active configuration source. alpha.2 hands a STABLE thunk that always

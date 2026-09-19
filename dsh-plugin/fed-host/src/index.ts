@@ -20,9 +20,17 @@ function normalize(value: Partial<HostSettings> & HostConfig): HostConfig {
     : Array.isArray(value.whitelistDirs)
       ? value.whitelistDirs
       : undefined
+  // The card carries a comma-separated string; the client wants a list. Keeping
+  // the split here means neither side has to know the other's shape.
+  const peerRaw = value.peerUrls
+  const peerUrls = typeof peerRaw === 'string'
+    ? peerRaw.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+    : Array.isArray(value.peerUrls)
+      ? [...value.peerUrls]
+      : []
   return {
-    gatewayUrl: typeof value.gatewayUrl === 'string' && value.gatewayUrl.length > 0 ? value.gatewayUrl : 'ws://127.0.0.1:3081/fed',
-    deviceName: typeof value.deviceName === 'string' && value.deviceName.length > 0 ? value.deviceName : undefined,
+    peerUrls,
+    nickname: typeof value.nickname === 'string' && value.nickname.length > 0 ? value.nickname : undefined,
     stateDir: typeof value.stateDir === 'string' ? value.stateDir : undefined,
     whitelistDirs,
     stateIntervalMs: typeof value.stateIntervalMs === 'number' && value.stateIntervalMs > 0 ? value.stateIntervalMs : 15_000,
@@ -87,8 +95,8 @@ export function apply(ctx: unknown, config: Config = {}): void {
         return
       }
       const base: HostSettings = {
-        gatewayUrl: currentConfig.gatewayUrl ?? 'ws://127.0.0.1:3081/fed',
-        deviceName: currentConfig.deviceName ?? '',
+        peerUrls: Array.isArray(currentConfig.peerUrls) ? currentConfig.peerUrls.join(',') : '',
+        nickname: currentConfig.nickname ?? '',
         whitelistDirs: Array.isArray(currentConfig.whitelistDirs)
           ? currentConfig.whitelistDirs.join(',')
           : typeof currentConfig.whitelistDirs === 'string'
@@ -133,7 +141,7 @@ export function apply(ctx: unknown, config: Config = {}): void {
         },
         onChange: () => {
           const next = normalize({ ...config, ...base, ...(source() ?? {}) })
-          console.log(`[hive-fed-host] settings changed: gatewayUrl=${next.gatewayUrl} deviceName=${next.deviceName}; reconnecting`)
+          console.log(`[hive-fed-host] settings changed: peerUrls=${(next.peerUrls ?? []).join(',')} nickname=${next.nickname ?? ''}; redialing`)
           currentConfig = next
           restart()
         },

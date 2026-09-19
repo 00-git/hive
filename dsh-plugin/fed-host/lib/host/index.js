@@ -1,4 +1,4 @@
-import { t as HostClient } from "./client-BkU_mxdE.js";
+import { t as HostClient } from "./client-BmPB8yBL.js";
 //#region src/vendor/cosmokit.mjs
 /** Return true when a value is `null` or `undefined`. */
 function isNullable(value) {
@@ -795,8 +795,8 @@ defineMethod("transform", [
 */
 const HOST_SETTINGS_NS = "hive-host";
 const HostSettingsSchema = Schema.object({
-	gatewayUrl: Schema.string().default("ws://127.0.0.1:3081/fed"),
-	deviceName: Schema.string().default(""),
+	peerUrls: Schema.string().default(""),
+	nickname: Schema.string().default(""),
 	whitelistDirs: Schema.string().default(""),
 	stateIntervalMs: Schema.number().default(15e3)
 });
@@ -814,9 +814,10 @@ const name = "hive-fed-host";
 function normalize(value) {
 	const whitelistRaw = value.whitelistDirs;
 	const whitelistDirs = typeof whitelistRaw === "string" && whitelistRaw.trim().length > 0 ? whitelistRaw.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0) : Array.isArray(value.whitelistDirs) ? value.whitelistDirs : void 0;
+	const peerRaw = value.peerUrls;
 	return {
-		gatewayUrl: typeof value.gatewayUrl === "string" && value.gatewayUrl.length > 0 ? value.gatewayUrl : "ws://127.0.0.1:3081/fed",
-		deviceName: typeof value.deviceName === "string" && value.deviceName.length > 0 ? value.deviceName : void 0,
+		peerUrls: typeof peerRaw === "string" ? peerRaw.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0) : Array.isArray(value.peerUrls) ? [...value.peerUrls] : [],
+		nickname: typeof value.nickname === "string" && value.nickname.length > 0 ? value.nickname : void 0,
 		stateDir: typeof value.stateDir === "string" ? value.stateDir : void 0,
 		whitelistDirs,
 		stateIntervalMs: typeof value.stateIntervalMs === "number" && value.stateIntervalMs > 0 ? value.stateIntervalMs : 15e3
@@ -855,8 +856,8 @@ function apply(ctx, config = {}) {
 			return;
 		}
 		const base = {
-			gatewayUrl: currentConfig.gatewayUrl ?? "ws://127.0.0.1:3081/fed",
-			deviceName: currentConfig.deviceName ?? "",
+			peerUrls: Array.isArray(currentConfig.peerUrls) ? currentConfig.peerUrls.join(",") : "",
+			nickname: currentConfig.nickname ?? "",
 			whitelistDirs: Array.isArray(currentConfig.whitelistDirs) ? currentConfig.whitelistDirs.join(",") : typeof currentConfig.whitelistDirs === "string" ? currentConfig.whitelistDirs : "",
 			stateIntervalMs: currentConfig.stateIntervalMs ?? 15e3
 		};
@@ -884,7 +885,7 @@ function apply(ctx, config = {}) {
 					...base,
 					...source() ?? {}
 				});
-				console.log(`[hive-fed-host] settings changed: gatewayUrl=${next.gatewayUrl} deviceName=${next.deviceName}; reconnecting`);
+				console.log(`[hive-fed-host] settings changed: peerUrls=${(next.peerUrls ?? []).join(",")} nickname=${next.nickname ?? ""}; redialing`);
 				currentConfig = next;
 				restart();
 			}

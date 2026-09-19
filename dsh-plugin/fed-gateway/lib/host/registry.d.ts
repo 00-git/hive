@@ -1,34 +1,35 @@
-import { a as FedCapability, i as DeviceTokenStore, n as DeviceIdentity, o as HostStateDigest, r as DeviceToken, t as DeviceId } from "./index-CJtvQaJJ.js";
+import { i as PeerIdentity, n as FedCapability, r as HostStateDigest, t as DeviceId } from "./index-BW9r-ZZU.js";
 //#region src/registry.d.ts
 interface HostConnectionState {
-  identity: DeviceIdentity;
-  /** Live dispatch channel; undefined while the host is mid-reconnect. */
+  identity: PeerIdentity;
+  /** Live dispatch channel; undefined while the peer is mid-reconnect. */
   send: ((frame: unknown) => void) | undefined;
   lastSeenMs: number;
   digest: HostStateDigest | undefined;
 }
-declare class HostRegistry implements DeviceTokenStore {
+declare class HostRegistry {
   #private;
-  /**
-   * Persist the registry (token HASHES + identities — never raw tokens) so a
-   * gateway restart does not force re-pairing (D-013).
-   */
-  setPersistence(file: string | undefined): void;
-  mintDeviceId(): DeviceId;
-  /** Register a freshly approved device: hash-only token storage (D-004). */
-  registerToken(deviceId: DeviceId, rawToken: string, identity: DeviceIdentity): void;
-  /** Revoke: token stops resolving immediately; the host must re-pair. */
-  revoke(deviceId: DeviceId): boolean;
-  /** DeviceTokenStore.resolve ??the ONLY identity source (?????? choke point). */
-  resolve(token: DeviceToken): DeviceIdentity | undefined;
-  /** Attach or re-attach a live connection for an authenticated host. */
-  bind(identity: DeviceIdentity, send: (frame: unknown) => void): void;
+  /** Attach or re-attach a live connection for an authorized peer. */
+  bind(identity: PeerIdentity, send: (frame: unknown) => void): void;
   unbind(deviceId: DeviceId): void;
   touch(deviceId: DeviceId, digest: HostStateDigest): void;
-  list(): readonly HostStateDigest[];
-  /** Resolve a host by deviceId or displayName for dispatch. */
+  /** Rows for peers we have heard from; offline rows included, marked by `online`. */
+  list(): readonly (HostStateDigest & {
+    online: boolean;
+  })[];
+  /**
+   * Resolve a dispatch target by device id, the peer's own nickname, or the
+   * operator's label for it.
+   *
+   * Name matching is a convenience lookup ONLY: the request runs against the
+   * deviceId resolved here, and capabilities are read from the identity that was
+   * authorized at handshake time — never from the name somebody typed. That is
+   * what stops a peer from granting itself rights by renaming to match a target.
+   */
   findForDispatch(nameOrId: string): HostConnectionState | undefined;
+  /** Capabilities come from the authorized identity, never from the wire. */
   hasCap(deviceId: DeviceId, cap: FedCapability): boolean;
+  isOnline(deviceId: DeviceId): boolean;
 }
 //#endregion
 export { HostConnectionState, HostRegistry };

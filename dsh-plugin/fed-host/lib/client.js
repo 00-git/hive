@@ -39,21 +39,24 @@ function textField(text) {
 }
 var FIELDS = [
   {
-    field: "gatewayUrl",
-    label: "\u7F51\u5173\u5730\u5740",
-    hint: "ws://<\u7F51\u5173IP>:3081/fed\uFF1B\u7ECF OpenP2P \u7EC4\u7F51\u65F6\u586B\u672C\u5730\u8F6C\u53D1\u7AEF\u53E3\u3002\u4FDD\u5B58\u540E\u7ACB\u5373\u91CD\u8FDE\u3002",
-    placeholder: "ws://127.0.0.1:3081/fed",
-    fallback: "ws://127.0.0.1:3081/fed",
+    field: "peerUrls",
+    label: "\u5BF9\u7AEF\u5730\u5740",
+    hint: "\u9017\u53F7\u5206\u9694\uFF0C\u5982 ws://127.0.0.1:3082/fed\u3002\u7ECF OpenP2P \u7EC4\u7F51\u65F6\uFF0C\u6BCF\u53F0\u5BF9\u7AEF\u586B\u4E00\u6761\u672C\u5730\u8F6C\u53D1\u7AEF\u53E3\u3002",
+    placeholder: "ws://127.0.0.1:3082/fed",
+    fallback: "",
     parse: (text) => {
       const write = textField(text);
-      if (write?.kind === "set" && !/^wss?:\/\/\S+$/i.test(String(write.value))) return void 0;
+      if (write?.kind === "set") {
+        const urls = String(write.value).split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+        if (urls.length === 0 || urls.some((entry) => !/^wss?:\/\/\S+$/i.test(entry))) return void 0;
+      }
       return write;
     }
   },
   {
-    field: "deviceName",
-    label: "\u8BBE\u5907\u540D\u79F0",
-    hint: "\u7F51\u5173\u4E3B\u673A\u5217\u8868\u4E0A\u7684\u663E\u793A\u540D\uFF1B\u7559\u7A7A\u5219\u56DE\u843D\u5230\u4E3B\u673A\u540D\u3002",
+    field: "nickname",
+    label: "\u672C\u673A\u6635\u79F0",
+    hint: "\u5176\u4ED6\u673A\u5668\u7684\u4E3B\u673A\u5217\u8868\u4E0A\u663E\u793A\u8FD9\u4E2A\u540D\u5B57\u3002\u7EAF\u5C55\u793A\uFF0C\u968F\u65F6\u53EF\u6539\uFF0C\u4E0D\u53C2\u4E0E\u8EAB\u4EFD\u8BA4\u5B9A\u3002",
     placeholder: "PC-2",
     fallback: "",
     parse: textField
@@ -229,10 +232,10 @@ function Card(props) {
 }
 function Summary(props) {
   const value = props.snapshot.value ?? {};
-  const gatewayUrl = String(value.gatewayUrl ?? "ws://127.0.0.1:3081/fed");
-  const deviceName = typeof value.deviceName === "string" && value.deviceName.length > 0 ? value.deviceName : "\u672A\u547D\u540D";
+  const peerUrls = String(value.peerUrls ?? "");
+  const nickname = typeof value.nickname === "string" && value.nickname.length > 0 ? value.nickname : "\u672A\u547D\u540D";
   const overridden = FIELDS.some((spec) => userCarries(props.snapshot.user, spec.field));
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, { children: `\u2192 ${gatewayUrl} \xB7 ${deviceName}${overridden ? " \xB7 \u5DF2\u8986\u76D6" : ""}` });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, { children: `\u2192 ${peerUrls.length > 0 ? peerUrls : "(\u672A\u914D\u7F6E\u5BF9\u7AEF)"} \xB7 ${nickname}${overridden ? " \xB7 \u5DF2\u8986\u76D6" : ""}` });
 }
 function HiveHostRow(props) {
   const { scope, view } = props;

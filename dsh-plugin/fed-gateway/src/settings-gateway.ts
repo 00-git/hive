@@ -10,11 +10,17 @@ export const GATEWAY_SETTINGS_NS = 'hive-gateway'
 export interface GatewaySettings {
   port: number
   bindHost: string
+  nickname: string
 }
 
 export const GatewaySettingsSchema = z.object({
   /** Federation WS 端口（改动即时重启监听）。 */
   port: z.number().default(3081),
-  /** 监听地址；P2P/局域网部署改 0.0.0.0。 */
-  bindHost: z.string().default('127.0.0.1'),
+  /**
+   * 监听地址。**留空 = 自动探测 VPN 网卡**；探测不到就不开监听（fail-closed）。
+   * 只有你要故意暴露到其他网卡时，才手填地址（如 0.0.0.0）。
+   */
+  bindHost: z.string().default(''),
+  /** 本机昵称，其他机器的主机列表上显示它。纯展示，不参与身份认定。 */
+  nickname: z.string().default(''),
 }) as never as z<GatewaySettings>

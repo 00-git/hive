@@ -103,10 +103,18 @@ const FIELDS: readonly FieldSpec[] = [
   {
     field: 'bindHost',
     label: '监听地址',
-    hint: '本机演示用 127.0.0.1；局域网或经 OpenP2P 组网的部署改 0.0.0.0。',
-    placeholder: '127.0.0.1',
-    fallback: '127.0.0.1',
+    hint: '留空 = 自动探测 VPN 网卡；探测不到就不开监听（故意的，宁可不通也不意外暴露）。仅当你要故意暴露到其他网卡时才手填。',
+    placeholder: '(留空 = 仅 VPN)',
+    fallback: '',
     parse: (text) => (text.trim() === '' ? { kind: 'clear' } : { kind: 'set', value: text.trim() }),
+  },
+  {
+    field: 'nickname',
+    label: '本机昵称',
+    hint: '其他机器的主机列表上显示这个名字。纯展示，随时可改，不参与身份认定。',
+    placeholder: 'PC-2',
+    fallback: '',
+    parse: textField,
   },
 ]
 
@@ -350,7 +358,10 @@ function Summary(props: { snapshot: ScopeSnapshot }): React.ReactElement {
   const port = value.port ?? 3081
   const bindHost = value.bindHost ?? '127.0.0.1'
   const overridden = userCarries(props.snapshot.user, 'port') || userCarries(props.snapshot.user, 'bindHost')
-  return <>{`监听 ${String(bindHost)}:${String(port)}${overridden ? ' · 已覆盖' : ''}`}</>
+  // An empty bindHost is not "unset" — it is the fail-closed setting, so say so
+  // rather than rendering a blank address.
+  const where = String(bindHost).length > 0 ? String(bindHost) : '自动(VPN)'
+  return <>{`监听 ${where}:${String(port)}${overridden ? ' · 已覆盖' : ''}`}</>
 }
 
 /**

@@ -50,10 +50,18 @@ var FIELDS = [
   {
     field: "bindHost",
     label: "\u76D1\u542C\u5730\u5740",
-    hint: "\u672C\u673A\u6F14\u793A\u7528 127.0.0.1\uFF1B\u5C40\u57DF\u7F51\u6216\u7ECF OpenP2P \u7EC4\u7F51\u7684\u90E8\u7F72\u6539 0.0.0.0\u3002",
-    placeholder: "127.0.0.1",
-    fallback: "127.0.0.1",
+    hint: "\u7559\u7A7A = \u81EA\u52A8\u63A2\u6D4B VPN \u7F51\u5361\uFF1B\u63A2\u6D4B\u4E0D\u5230\u5C31\u4E0D\u5F00\u76D1\u542C\uFF08\u6545\u610F\u7684\uFF0C\u5B81\u53EF\u4E0D\u901A\u4E5F\u4E0D\u610F\u5916\u66B4\u9732\uFF09\u3002\u4EC5\u5F53\u4F60\u8981\u6545\u610F\u66B4\u9732\u5230\u5176\u4ED6\u7F51\u5361\u65F6\u624D\u624B\u586B\u3002",
+    placeholder: "(\u7559\u7A7A = \u4EC5 VPN)",
+    fallback: "",
     parse: (text) => text.trim() === "" ? { kind: "clear" } : { kind: "set", value: text.trim() }
+  },
+  {
+    field: "nickname",
+    label: "\u672C\u673A\u6635\u79F0",
+    hint: "\u5176\u4ED6\u673A\u5668\u7684\u4E3B\u673A\u5217\u8868\u4E0A\u663E\u793A\u8FD9\u4E2A\u540D\u5B57\u3002\u7EAF\u5C55\u793A\uFF0C\u968F\u65F6\u53EF\u6539\uFF0C\u4E0D\u53C2\u4E0E\u8EAB\u4EFD\u8BA4\u5B9A\u3002",
+    placeholder: "PC-2",
+    fallback: "",
+    parse: textField
   }
 ];
 function useScope(scope) {
@@ -221,7 +229,8 @@ function Summary(props) {
   const port = value.port ?? 3081;
   const bindHost = value.bindHost ?? "127.0.0.1";
   const overridden = userCarries(props.snapshot.user, "port") || userCarries(props.snapshot.user, "bindHost");
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, { children: `\u76D1\u542C ${String(bindHost)}:${String(port)}${overridden ? " \xB7 \u5DF2\u8986\u76D6" : ""}` });
+  const where = String(bindHost).length > 0 ? String(bindHost) : "\u81EA\u52A8(VPN)";
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, { children: `\u76D1\u542C ${where}:${String(port)}${overridden ? " \xB7 \u5DF2\u8986\u76D6" : ""}` });
 }
 function HiveGatewayRow(props) {
   const { scope, view } = props;

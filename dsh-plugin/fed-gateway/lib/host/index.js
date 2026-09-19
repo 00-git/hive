@@ -1,4 +1,4 @@
-import { GatewayServer } from "./server.js";
+import { t as GatewayServer } from "./server-B7lCVy9H.js";
 //#region src/vendor/cosmokit.mjs
 /** Return true when a value is `null` or `undefined`. */
 function isNullable(value) {
@@ -799,8 +799,13 @@ const GATEWAY_SETTINGS_NS = "hive-gateway";
 const GatewaySettingsSchema = Schema.object({
 	/** Federation WS 端口（改动即时重启监听）。 */
 	port: Schema.number().default(3081),
-	/** 监听地址；P2P/局域网部署改 0.0.0.0。 */
-	bindHost: Schema.string().default("127.0.0.1")
+	/**
+	* 监听地址。**留空 = 自动探测 VPN 网卡**；探测不到就不开监听（fail-closed）。
+	* 只有你要故意暴露到其他网卡时，才手填地址（如 0.0.0.0）。
+	*/
+	bindHost: Schema.string().default(""),
+	/** 本机昵称，其他机器的主机列表上显示它。纯展示，不参与身份认定。 */
+	nickname: Schema.string().default("")
 });
 //#endregion
 //#region src/index.ts
@@ -816,7 +821,8 @@ const name = "hive-fed-gateway";
 function normalizeConfig(value) {
 	return {
 		port: typeof value.port === "number" && Number.isInteger(value.port) && value.port >= 1 && value.port <= 65535 ? value.port : 3081,
-		bindHost: typeof value.bindHost === "string" && value.bindHost.length > 0 ? value.bindHost : "127.0.0.1",
+		bindHost: typeof value.bindHost === "string" ? value.bindHost.trim() : "",
+		nickname: typeof value.nickname === "string" ? value.nickname.trim() : "",
 		auditPath: typeof value.auditPath === "string" ? value.auditPath : void 0,
 		stateDir: typeof value.stateDir === "string" ? value.stateDir : void 0
 	};
@@ -863,12 +869,14 @@ function apply(ctx, config = {}) {
 		/** Schema defaults, layered under the composition entry the loader resolved. */
 		const defaults = {
 			port: 3081,
-			bindHost: "127.0.0.1"
+			bindHost: "",
+			nickname: ""
 		};
 		/** The composition entry: the patch row's config, and the install fallback. */
 		const entry = {
 			port: typeof config.port === "number" ? config.port : defaults.port,
-			bindHost: typeof config.bindHost === "string" ? config.bindHost : defaults.bindHost
+			bindHost: typeof config.bindHost === "string" ? config.bindHost : defaults.bindHost,
+			nickname: typeof config.nickname === "string" ? config.nickname : defaults.nickname
 		};
 		/**
 		* The active configuration source. alpha.2 hands a STABLE thunk that always

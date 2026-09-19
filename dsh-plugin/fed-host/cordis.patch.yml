@@ -1,12 +1,17 @@
 # hive-fed-host — bundle layer
 #
-# Host-only. Applied automatically by `dsh plugin add hive-fed-host`, or copy
-# this row into the profile's cordis.patch.yml (local dev path). Mount only on
-# machines that should join the federation as executors.
+# 拨号侧。装上它，这台机器才会主动去连别的机器。
+# 与 fed-gateway 一起装才是完整的对等节点。
+#
+# Applied automatically by `dsh plugin add hive-fed-host`, or copy this row
+# into the profile's cordis.patch.yml (local dev path).
 
 - insert:
     - id: hive-fed-host/host
       name: hive-fed-host
       config:
-        gatewayUrl: ws://127.0.0.1:3081/fed
-        deviceName: PC-2
+        # 逗号分隔的对端地址。经 OpenP2P 组网时填本地转发端口，
+        # 例如 ws://127.0.0.1:3082/fed
+        peerUrls: ''
+        # 本机昵称，其他机器的列表上显示它。纯展示，不参与身份认定。
+        nickname: ''

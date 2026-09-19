@@ -1,6 +1,9 @@
 # hive-fed-gateway — bundle layer
 #
-# Host-only. Applied automatically by `dsh plugin add hive-fed-gateway`,
+# 接收侧。**每台机器都要装** —— hive 没有中心，每个节点都要能被同伴连上。
+# 装完之后这台机器同时是“拨号方”（fed-host）和“接收方”（本包）。
+#
+# Applied automatically by `dsh plugin add hive-fed-gateway`,
 # or copy this row into the profile's cordis.patch.yml (local dev path).
 
 - insert:
@@ -8,4 +11,8 @@
       name: hive-fed-gateway
       config:
         port: 3081
-        bindHost: 127.0.0.1
+        # 留空 = 自动探测 VPN 网卡；探测不到就【不开监听】（故意的，fail-closed）。
+        # 仅当你要故意暴露到其他网卡时才手填地址。
+        bindHost: ''
+        # 本机昵称，其他机器的列表上显示它。纯展示，不参与身份认定。
+        nickname: ''

@@ -1,71 +1,3 @@
-//#region src/auth.d.ts
-/** Opaque device token issued at pairing. Branded: never a bare string. */
-declare const deviceTokenBrand: unique symbol;
-type DeviceToken = string & {
-  readonly [deviceTokenBrand]: true;
-};
-/** Stable device identity minted by the gateway at pairing approval. */
-declare const deviceIdBrand: unique symbol;
-type DeviceId = string & {
-  readonly [deviceIdBrand]: true;
-};
-/** Capability names a host may grant at pairing. Closed set (security invariant). */
-declare const FedCapability: {
-  /** host accepts agent.task dispatch and runs it under local approval. */
-  readonly TASK_EXEC: "task.exec";
-  /** host answers agent.ask introspection questions. */
-  readonly TASK_ASK: "task.ask";
-  /** host streams state summaries (host.state). */
-  readonly STATE_REPORT: "state.report";
-  /** host may receive signed plugin install requests (host-side confirm still required). */
-  readonly PLUGIN_INSTALL: "plugin.install";
-};
-type FedCapability = (typeof FedCapability)[keyof typeof FedCapability];
-/** Token issuance result: the raw token is shown/stored once by the receiver. */
-interface IssuedToken {
-  token: DeviceToken;
-  tokenId: string;
-  tokenHash: string;
-}
-/**
- * Mint a new device token. Returns the raw token exactly once; only the
- * SHA-256 hash is retained by the issuer (gateway compromise must not leak
- * reusable credentials — D-004 爆炸半径约束).
- */
-declare function issueDeviceToken(deviceId: DeviceId): IssuedToken;
-declare function hashToken(token: DeviceToken): string;
-/** Constant-time token comparison over hashes (never over raw secrets). */
-declare function tokenHashesEqual(a: string, b: string): boolean;
-/** Narrow an untrusted string into a DeviceToken (format check only — lookup is separate). */
-declare function asDeviceToken(value: unknown): DeviceToken | undefined;
-/** Identity resolved server-side from the token store — never from client claims. */
-interface DeviceIdentity {
-  deviceId: DeviceId;
-  displayName: string;
-  caps: readonly FedCapability[];
-  pairedAt: number;
-}
-/** Minimal token store contract the gateway (issuer side) implements. */
-interface DeviceTokenStore {
-  /** Resolve identity by raw token. Returns undefined for unknown/revoked tokens. */
-  resolve(token: DeviceToken): DeviceIdentity | undefined;
-}
-/**
- * Authenticate an inbound request.
- *
- * The ONLY input consulted is the presented token; every other parameter is
- * diagnostic metadata for the audit log and cannot influence the decision.
- * This is the single choke point for the 禁止清单 rule on the gateway side.
- */
-declare function authenticate(store: DeviceTokenStore, presented: unknown, context: {
-  readonly source: string;
-  readonly declaredName?: unknown;
-}): {
-  identity: DeviceIdentity;
-} | {
-  error: 'unauthenticated';
-};
-//#endregion
 //#region src/errors.d.ts
 /**
  * Structured federation error codes and error payloads.
@@ -116,43 +48,251 @@ declare function fedError(code: FedErrorCode, message: string, extra?: Omit<FedE
 /** Narrow an unknown thrown value into a FedError for wire emission. */
 declare function toFedError(value: unknown, traceId?: string): FedError;
 //#endregion
+//#region src/identity.d.ts
+/**
+ * Stable peer identity, self-derived from a public key. Branded so a bare
+ * string can never be passed where an identity is required (dsh 跨边界 id
+ * 品牌化约定). Defined here rather than in auth.ts because auth.ts consumes
+ * identities and this module must stay import-free at runtime.
+ */
+declare const deviceIdBrand: unique symbol;
+type DeviceId = string & {
+  readonly [deviceIdBrand]: true;
+};
+/** Raw Ed25519 public key, base64url of the 32-byte JWK `x` coordinate. */
+type PublicKeyB64 = string;
+/** PKCS8 PEM. Never crosses the wire; never leaves the machine. */
+type PrivateKeyPem = string;
+/** The on-disk identity material one peer owns. */
+interface PeerIdentityMaterial {
+  readonly deviceId: DeviceId;
+  readonly publicKey: PublicKeyB64;
+  readonly privateKeyPem: PrivateKeyPem;
+  /** Creation time, audit only — never used for any decision. */
+  readonly createdAtMs: number;
+}
+/**
+ * Derive the self-certifying id from a public key. Pure and local: any peer can
+ * recompute it, so no peer needs to be told who anyone is.
+ */
+declare function deriveDeviceId(publicKey: PublicKeyB64): DeviceId;
+/** Mint a fresh peer identity. Called once per machine, then persisted. */
+declare function generateIdentity(): PeerIdentityMaterial;
+/**
+ * Rebuild the identity material from persisted parts, verifying that the stored
+ * deviceId still derives from the stored key. A mismatch means the file was
+ * edited (or is corrupt) — refuse rather than silently adopt a new identity.
+ */
+declare function restoreIdentity(publicKey: PublicKeyB64, privateKeyPem: PrivateKeyPem, createdAtMs?: number): PeerIdentityMaterial;
+/** Fresh 32-byte nonce, base64url. Per-connection: never reused. */
+declare function createNonce(): string;
+/**
+ * Sign a handshake nonce. Used by BOTH sides:
+ * - the dialer signs the acceptor's nonce (step 2 of the handshake),
+ * - the acceptor signs the dialer's nonce (rides along in the challenge frame).
+ *
+ * Authentication is mutual because neither side can produce a proof without
+ * the other's fresh nonce — a peer that only verified the dialer would let an
+ * attacker impersonate the acceptor to a dialing machine.
+ */
+declare function signHandshake(privateKeyPem: PrivateKeyPem, nonce: string, dialerId: DeviceId, acceptorId: DeviceId): string;
+/**
+ * Verify a peer's proof. `dialerId`/`acceptorId` must be passed in the same
+ * fixed roles the signer used, so a proof made for one direction cannot be
+ * reflected back at its maker.
+ */
+declare function verifyHandshake(publicKey: PublicKeyB64, nonce: string, dialerId: DeviceId, acceptorId: DeviceId, signature: string): boolean;
+/**
+ * Short authentication string derived from BOTH public keys.
+ *
+ * Order-independent (the pair is sorted), so the two operators read the same
+ * six digits off their own screens. That is the whole point: an attacker who
+ * substitutes a key changes the SAS, and the mismatch is visible to a human.
+ * Not a secret — derivation from public keys is intentional.
+ */
+declare function computeSas(publicKeyA: PublicKeyB64, publicKeyB: PublicKeyB64): string;
+/**
+ * Human-facing grouping of a device id (4-4-4-4). Display only — always compare
+ * the SAS for trust; never compare ids by eye.
+ */
+declare function formatDeviceId(deviceId: DeviceId): string;
+//#endregion
+//#region src/auth.d.ts
+/** Capability names a host may grant at pairing. Closed set (security invariant). */
+declare const FedCapability: {
+  /** host accepts agent.task dispatch and runs it under local approval. */
+  readonly TASK_EXEC: "task.exec";
+  /** host answers agent.ask introspection questions. */
+  readonly TASK_ASK: "task.ask";
+  /** host streams state summaries (host.state). */
+  readonly STATE_REPORT: "state.report";
+  /** host may receive signed plugin install requests (host-side confirm still required). */
+  readonly PLUGIN_INSTALL: "plugin.install";
+};
+type FedCapability = (typeof FedCapability)[keyof typeof FedCapability];
+declare function isFedCapability(value: string): value is FedCapability;
+/**
+ * An operator-approved peer. Only ever created by the SAS confirmation flow —
+ * never by anything that arrived over the wire.
+ */
+interface PeerIdentity {
+  deviceId: DeviceId;
+  /** Pinned at confirmation. A different key is a different deviceId, by construction. */
+  publicKey: PublicKeyB64;
+  /** Operator-facing label. Cosmetic only — never an identity source. */
+  displayName: string;
+  caps: readonly FedCapability[];
+  /** When the operator confirmed the SAS (audit + ordering, not a decision input). */
+  trustedAtMs: number;
+}
+/** Local trust table contract (implementation persists to trusted-peers.json). */
+interface TrustStore {
+  /**
+   * Returns the peer only when an operator approved it AND the stored key still
+   * matches the presented one. Returning undefined is how a peer is rejected;
+   * there is no separate revocation mechanism to keep in sync.
+   */
+  lookup(deviceId: DeviceId, publicKey: PublicKeyB64): PeerIdentity | undefined;
+}
+/**
+ * The two facts the transport establishes before authorization. They are kept
+ * separate because they fail differently and the caller must react differently:
+ * a broken signature is a hard reject, while an unverified peer just needs an
+ * operator to compare six digits.
+ */
+interface HandshakeProof {
+  readonly deviceId: DeviceId;
+  readonly publicKey: PublicKeyB64;
+  /** Output of verifyHandshake(); computed by the transport, consumed here. */
+  readonly signatureVerified: boolean;
+}
+type AuthorizationFailure =
+/** Key/id binding or signature failed — the peer is not who it claims. */
+'unauthenticated' |
+/** Signature is fine but no operator has confirmed this peer yet. */
+'untrusted';
+/**
+ * Authorize an inbound peer request.
+ *
+ * The ONLY inputs consulted are the signature result and the local trust table;
+ * every other parameter is diagnostic metadata for the audit log and cannot
+ * influence the decision. This is the single choke point for the 禁止清单 rule.
+ */
+declare function authorize(store: TrustStore, proof: HandshakeProof, context: {
+  readonly source: string;
+  readonly declaredName?: unknown;
+}): {
+  identity: PeerIdentity;
+} | {
+  error: AuthorizationFailure;
+};
+/**
+ * Constant-time comparison for the LOCAL user surface token.
+ *
+ * Scope note: this token never crosses a trust boundary — it only gates the
+ * loopback CLI against the local listener, so it is not part of the federation
+ * identity model and needs no registry.
+ */
+declare function localTokenMatches(presented: unknown, expected: string): boolean;
+//#endregion
 //#region src/frames.d.ts
-/** Wire protocol version of this implementation. Bump on breaking frame changes. */
-declare const PROTOCOL_VERSION = 1;
+/**
+ * Wire protocol version. Bumped to 2 by the self-sovereign identity cut (D-020).
+ * v1 peers are REJECTED rather than half-supported: there is no meaningful
+ * translation between "an issuer told me who you are" and "you proved it
+ * yourself" — a bridge would just be the center server again, in disguise.
+ */
+declare const PROTOCOL_VERSION = 2;
 /** Oldest wire protocol this build accepts. */
-declare const MIN_PROTOCOL_VERSION = 1;
+declare const MIN_PROTOCOL_VERSION = 2;
 /** Newest wire protocol this build accepts. */
-declare const MAX_PROTOCOL_VERSION = 1;
-/** Connection roles. A host is a full agent runtime; a user is a chat surface. */
-type PeerRole = 'gateway' | 'host' | 'user';
-/** connect.req params — the first frame on any connection. */
+declare const MAX_PROTOCOL_VERSION = 2;
+/**
+ * Connection roles. `host` is a federated peer runtime (it accepts directed
+ * tasks); `user` is the LOCAL operator surface — the CLI/UI gated by the
+ * loopback user token.
+ *
+ * There is deliberately no `gateway` role: every peer both dials and accepts, so
+ * "who happened to accept this socket" carries no authority.
+ */
+type PeerRole = 'host' | 'user';
+/**
+ * connect.req params — the first frame on any connection.
+ *
+ * Note what is NOT here: no credential. A connect frame only *claims* an
+ * identity; the claim becomes meaningful after step 2 (authenticate) proves
+ * possession of the private key. A signature is required even for an
+ * already-trusted peer — otherwise copying a trusted peer's PUBLIC key would be
+ * enough to impersonate it.
+ */
 interface ConnectParams {
   role: PeerRole;
-  /** Human-readable device label; diagnostic only, never an identity source. */
-  deviceName: string;
   protocol: {
     readonly min: number;
     readonly max: number;
   };
-  /** Present on role:"host" only when presenting a pairing token or device token. */
-  deviceToken?: string;
-  /** Host capability advertisement; verified server-side, not trusted. */
+  /** Self-declared public key; the acceptor derives the id from it. */
+  publicKey?: PublicKeyB64;
+  /**
+   * The dialer's own fresh nonce. The acceptor signs it, which is what proves
+   * the ACCEPTOR's identity to the dialer — without this, verification would be
+   * one-way and an attacker could impersonate the acceptor.
+   */
+  clientNonce?: string;
+  /**
+   * Operator-facing label for this peer, editable locally at any time. Cosmetic
+   * by construction: display and dispatch-by-name only, never an identity source.
+   */
+  nickname?: string;
+  /** Present on role:"user": the LOCAL loopback token. Never a federation credential. */
+  userToken?: string;
+  /** Capability advertisement; re-validated locally, never trusted from the wire. */
   caps?: readonly FedCapability[];
 }
-/** connect res payload on success. */
+/** authenticate.req params — step 2: prove possession of the claimed key. */
+interface AuthenticateParams {
+  /** Ed25519 over the acceptor's nonce, bound to both peer ids. */
+  signature: string;
+}
+/**
+ * connect res payload (role:"host"). Always a challenge: a fresh nonce the peer
+ * must sign, plus the SAS the two operators compare out of band.
+ */
+interface ChallengeOk {
+  protocol: number;
+  /** Fresh, per-connection, single-use. Never reused, never sent in two places. */
+  nonce: string;
+  /** Six digits derived from BOTH public keys; an attacker swapping a key changes it. */
+  sas: string;
+  /** The acceptor's own id, so the dialer can rebuild the canonical signed message. */
+  acceptorId: DeviceId;
+  /** How the acceptor wants to be shown. The dialer cannot infer this from hello. */
+  acceptorNickname: string;
+  /** The acceptor's public key — the dialer needs it to verify the proof below. */
+  acceptorPublicKey: PublicKeyB64;
+  /** The acceptor's proof over the dialer's clientNonce. Makes authentication mutual. */
+  signature: string;
+  /** Server wall clock so peers can bound drift for deadline math. */
+  serverTimeMs: number;
+}
+/** authenticate res payload on success. */
 interface HelloOk {
   protocol: number;
   peer: {
     role: PeerRole;
-    deviceName: string;
+    deviceId: DeviceId;
+    nickname: string;
   };
-  /** Server wall clock so hosts can bound drift for deadline math. */
+  /** Server wall clock so peers can bound drift for deadline math. */
   serverTimeMs: number;
-  /** Present when a host connected without a (valid) token: pairing is pending. */
-  pairing?: {
-    readonly code: string;
-    readonly expiresAtMs: number;
-  };
+  /**
+   * False when the signature verified but no operator has confirmed the SAS yet.
+   * The connection is held open (the peer may only send trust negotiation), and
+   * the local operator is prompted. Never treat trusted:false as authorized.
+   */
+  trusted: boolean;
+  /** Granted capabilities, from the LOCAL trust table — not from the peer's advertisement. */
+  caps?: readonly FedCapability[];
 }
 /** Request frame. */
 interface FedRequest {
@@ -204,45 +344,46 @@ declare function negotiateProtocol(params: ConnectParams): number;
 declare function sanitizeAdvertisedCaps(value: unknown): readonly FedCapability[];
 //#endregion
 //#region src/methods.d.ts
-/**
- * Federation method and event catalogs.
- *
- * Naming is A-class benchmarked against dsh ctx.* service method conventions:
- * domain-prefixed, verb-last where a noun reads better, closed sets.
- * Side-effecting methods REQUIRE an idempotencyKey on the request frame.
- */
 declare const FedMethod: {
-  /** any peer → gateway: first frame on a connection (role + protocol range + token). */
+  /** any peer → acceptor: first frame on a connection (role + protocol range + public key). */
   readonly CONNECT: "connect";
-  /** host → gateway: present a pairing code, request a device token. */
-  readonly PAIR_REQUEST: "pair.request";
-  /** user surface → gateway: approve a pending pairing code. */
-  readonly PAIR_APPROVE: "pair.approve";
-  /** gateway → user surfaces: a pairing code awaits approval. */
-  readonly PAIR_PENDING_EVENT: "pair.pending";
-  /** host → gateway: advertise caps and current state summary (post-connect). */
+  /** dialing peer → acceptor: sign the acceptor's nonce — step 2 of every handshake. */
+  readonly AUTHENTICATE: "authenticate";
+  /** local user surface → acceptor: peers whose signature verified but whose SAS is unconfirmed. */
+  readonly TRUST_PENDING_LIST: "trust.pending.list";
+  /** local user surface → acceptor: an operator compared the SAS; pin this peer. */
+  readonly TRUST_APPROVE: "trust.approve";
+  /** local user surface → acceptor: drop a peer from the trust table (local, instant, no sync). */
+  readonly TRUST_REVOKE: "trust.revoke";
+  /** local user surface → acceptor: read the trust table. */
+  readonly TRUST_LIST: "trust.list";
+  /** peer → acceptor: advertise caps and current state summary (post-connect). */
   readonly HOST_REGISTER: "host.register";
-  /** host → gateway: periodic state digest push (also available as an event). */
+  /** peer → acceptor: periodic state digest push (also available as an event). */
   readonly HOST_STATE_REPORT: "host.state.report";
-  /** gateway → host: dispatch one directed task. Side-effecting. */
+  /** acceptor → peer: dispatch one directed task. Side-effecting. */
   readonly AGENT_TASK: "agent.task";
-  /** gateway → host / host → gateway: cancel an in-flight task. Side-effecting. */
+  /** either direction: cancel an in-flight task. Side-effecting. */
   readonly AGENT_TASK_CANCEL: "agent.task.cancel";
-  /** gateway → host: ask a bounded introspection question (no side effects). */
+  /** acceptor → peer: ask a bounded introspection question (no side effects). */
   readonly AGENT_ASK: "agent.ask";
-  /** user surface → gateway: send a chat turn. Side-effecting. */
+  /** local user surface → acceptor: send a chat turn. Side-effecting. */
   readonly CHAT_SEND: "chat.send";
-  /** user surface → gateway: read synchronized session history (dsh session log mirror). */
+  /** local user surface → acceptor: read synchronized session history (dsh session log mirror). */
   readonly CHAT_HISTORY: "chat.history";
-  /** user surface → gateway: list paired hosts with their last state digests. */
+  /** local user surface → acceptor: list trusted peers with their last state digests. */
   readonly HOST_LIST: "host.list";
+  /** any peer → any peer: exchange known peers so the mesh heals without a directory. */
+  readonly PEER_EXCHANGE: "peer.exchange";
 };
 type FedMethod = (typeof FedMethod)[keyof typeof FedMethod];
 declare const FedEvent$1: {
-  /** pairing outcome for the requesting host (approved token / denied reason). */
-  readonly PAIR_RESULT: "pair/result";
-  /** pairing code awaiting operator approval (gateway → user surfaces). */
-  readonly PAIR_PENDING: "pair/pending";
+  /** acceptor → local user surfaces: a peer's signature verified but its SAS is unconfirmed. */
+  readonly TRUST_PENDING: "trust/pending";
+  /** acceptor → a pending peer: an operator compared the SAS and pinned this peer. */
+  readonly TRUST_GRANTED: "trust/granted";
+  /** acceptor → a pending peer: the operator rejected it, or the window expired. */
+  readonly TRUST_DENIED: "trust/denied";
   /** agent.stream — streamed agent output for a task/chat turn. */
   readonly AGENT_STREAM: "agent.stream";
   /** tool lifecycle mirrors (dsh tool/call, tool/result shape). */
@@ -254,9 +395,17 @@ declare const FedEvent$1: {
   readonly TASK_UPDATED: "task/updated";
   /** host state digest broadcast. */
   readonly HOST_STATE: "host/state";
+  /** peer table delta so the mesh heals without any directory. */
+  readonly PEER_UPDATED: "peer/updated";
 };
 type FedEvent$1 = (typeof FedEvent$1)[keyof typeof FedEvent$1];
-/** Methods whose req frames MUST carry idempotencyKey (security/consistency invariant). */
+/**
+ * Methods whose req frames MUST carry idempotencyKey (security/consistency invariant).
+ *
+ * trust.approve is deliberately NOT here: it is keyed by deviceId and its
+ * effect is set-like (approving twice is one row), so a replay is a no-op by
+ * construction rather than something the key machinery has to rescue.
+ */
 declare const IDEMPOTENT_METHODS: ReadonlySet<string>;
 /** Task lifecycle states mirrored from dsh turn/step semantics. */
 type TaskState = 'pending' | 'running' | 'done' | 'failed' | 'cancelled';
@@ -277,10 +426,18 @@ interface AgentAskParams {
   deadlineMs: number;
   traceId: string;
 }
-/** Host state digest — the anti-信息差 payload injected into the main agent's context. */
+/**
+ * Host state digest — the anti-信息差 payload injected into the main agent's context.
+ *
+ * Written by the peer about ITSELF (single writer per row), so no conflict
+ * resolution is needed: a stale copy is simply overwritten by the next report.
+ * `nickname` is the owning peer's own label and carries no authority — every
+ * receiver keys off deviceId, so a peer cannot promote itself by renaming.
+ */
 interface HostStateDigest {
-  deviceId: string;
-  displayName: string;
+  deviceId: DeviceId;
+  /** Operator-facing label, freely editable by the owning peer. Never an identity source. */
+  nickname: string;
   os: string;
   lanAddress: string;
   cpuLoadPct?: number;
@@ -294,6 +451,127 @@ interface HostStateDigest {
 }
 /** Side-effect methods must be dispatched with these delivery fields present. */
 declare function requiresIdempotencyKey(method: string): boolean;
+/**
+ * trust.approve params — the operator's out-of-band confirmation, mirrored on the wire.
+ *
+ * The operator must type the digits displayed on the OTHER machine, not the ones
+ * shown locally. That is the whole anti-MITM mechanism: with an attacker in the
+ * middle the two screens show different digits, so the typed value fails the
+ * local comparison and the peer is refused. Pasting the local value would
+ * confirm the attacker instead.
+ */
+interface TrustApproveParams {
+  deviceId: DeviceId;
+  /** Must equal the SAS computed locally from both public keys. */
+  sas: string;
+  /** Optional label the operator assigns locally; ignored when absent. */
+  nickname?: string;
+}
+/**
+ * One peer as advertised by another peer (peer.exchange).
+ *
+ * A HINT, never an authorization. Receiving a row here must NOT create trust:
+ * the receiver dials the address and runs the full handshake + SAS comparison
+ * exactly as if a human had typed it. That is what keeps a malicious peer from
+ * populating the mesh with identities it vouches for.
+ */
+interface PeerAnnouncement {
+  deviceId: DeviceId;
+  publicKey: PublicKeyB64;
+  nickname: string;
+  /** Where the ANNOUNCER reaches this peer (an already-local forward address when tunneled). */
+  address: string;
+  /** Whether the ANNOUNCER trusts it — informational only; the receiver decides for itself. */
+  trusted: boolean;
+  lastSeenMs: number;
+}
+//#endregion
+//#region src/trust.d.ts
+/** On-disk shape. Flat so the file stays hand-inspectable when debugging. */
+interface TrustedPeerRow {
+  deviceId: DeviceId;
+  publicKey: PublicKeyB64;
+  displayName: string;
+  caps: readonly FedCapability[];
+  trustedAtMs: number;
+}
+/** A peer whose signature verified but whose SAS no operator has confirmed yet. */
+interface PendingTrust {
+  deviceId: DeviceId;
+  publicKey: PublicKeyB64;
+  /** Computed locally. The operator must type the value shown on the OTHER screen. */
+  sas: string;
+  nickname: string;
+  /** What the peer advertised; the operator may narrow it, never widen it silently. */
+  advertisedCaps: readonly FedCapability[];
+  requestedAtMs: number;
+  expiresAtMs: number;
+}
+/**
+ * Everything the table owns, in one document.
+ *
+ * Trusted rows and pending requests share a file on purpose: the operator CLI
+ * is then a pure file reader/writer with no listener to connect to, and both
+ * processes on the machine observe one another's decisions.
+ */
+interface TrustSnapshot {
+  trusted: readonly TrustedPeerRow[];
+  pending: readonly PendingTrust[];
+}
+interface TrustPersistence {
+  load(): TrustSnapshot | undefined;
+  save(snapshot: TrustSnapshot): void;
+}
+type TrustApprovalOutcome = {
+  ok: true;
+  peer: PeerIdentity;
+} | {
+  ok: false;
+  reason: 'sas_mismatch' | 'no_pending_request';
+};
+declare class TrustTable implements TrustStore {
+  #private;
+  constructor(persistence?: TrustPersistence, windowMs?: number);
+  /** TrustStore. A key that no longer matches the row means no trust. */
+  lookup(deviceId: DeviceId, publicKey: PublicKeyB64): PeerIdentity | undefined;
+  isTrusted(deviceId: DeviceId): boolean;
+  /**
+   * Record a signature-verified peer awaiting confirmation. Idempotent per
+   * deviceId: reconnecting refreshes the window instead of queueing a second
+   * prompt, so a reconnect loop cannot spam the operator.
+   */
+  requestTrust(input: {
+    deviceId: DeviceId;
+    publicKey: PublicKeyB64;
+    sas: string;
+    nickname: string;
+    advertisedCaps?: readonly FedCapability[];
+  }): PendingTrust;
+  pending(): readonly PendingTrust[];
+  pendingFor(deviceId: DeviceId): PendingTrust | undefined;
+  /**
+   * Operator confirmation.
+   *
+   * `sas` MUST be what the operator read off the OTHER machine's screen. Typing
+   * the locally displayed value always succeeds and confirms whoever is on the
+   * other end — exactly the attacker's goal. The comparison IS the mechanism,
+   * not a formality.
+   *
+   * No constant-time compare: the SAS derives from public keys, so it is not a
+   * secret and a timing oracle would leak nothing.
+   */
+  approve(deviceId: DeviceId, sas: string, options?: {
+    nickname?: string;
+    caps?: readonly FedCapability[];
+  }): TrustApprovalOutcome;
+  /** Operator dismissal. Drops the request only; no lasting record either way. */
+  deny(deviceId: DeviceId): boolean;
+  /** Instant local rejection — the peer's next handshake simply finds no row. */
+  revoke(deviceId: DeviceId): boolean;
+  /** Re-label a trusted peer. Display only: never touches the id or the key. */
+  relabel(deviceId: DeviceId, displayName: string): boolean;
+  list(): readonly PeerIdentity[];
+}
 //#endregion
 //#region src/index.d.ts
 declare const name = "hive-fed-protocol";
@@ -317,23 +595,33 @@ interface FedProtocolService {
   negotiateProtocol(params: ConnectParams): number;
   sanitizeAdvertisedCaps(value: unknown): readonly FedCapability[];
   requiresIdempotencyKey(method: string): boolean;
-  /** Single authentication choke point (禁止清单 enforcement). */
-  authenticate(store: DeviceTokenStore, presented: unknown, context: {
+  /** Single authorization choke point (禁止清单 enforcement). */
+  authorize(store: TrustStore, proof: HandshakeProof, context: {
     readonly source: string;
     readonly declaredName?: unknown;
   }): {
-    identity: DeviceIdentity;
+    identity: PeerIdentity;
   } | {
-    error: 'unauthenticated';
+    error: AuthorizationFailure;
   };
-  issueDeviceToken(deviceId: DeviceId): IssuedToken;
-  hashToken(token: DeviceToken): string;
-  tokenHashesEqual(a: string, b: string): boolean;
-  asDeviceToken(value: unknown): DeviceToken | undefined;
+  /** Self-sovereign identity primitives — no issuer, no registry to consult. */
+  readonly identity: {
+    generate(): PeerIdentityMaterial;
+    restore(publicKey: PublicKeyB64, privateKeyPem: PrivateKeyPem, createdAtMs?: number): PeerIdentityMaterial;
+    deriveDeviceId(publicKey: PublicKeyB64): DeviceId;
+    createNonce(): string;
+    signHandshake(privateKeyPem: PrivateKeyPem, nonce: string, selfId: DeviceId, peerId: DeviceId): string;
+    verifyHandshake(publicKey: PublicKeyB64, nonce: string, dialerId: DeviceId, acceptorId: DeviceId, signature: string): boolean;
+    computeSas(publicKeyA: PublicKeyB64, publicKeyB: PublicKeyB64): string;
+    formatDeviceId(deviceId: DeviceId): string;
+  };
+  /** Loopback-only operator token check; NOT part of the federation identity model. */
+  localTokenMatches(presented: unknown, expected: string): boolean;
+  isFedCapability(value: string): value is FedCapability;
   fedError: typeof fedError;
   toFedError: typeof toFedError;
 }
 declare function apply(ctx: unknown, config?: Config): void;
 //#endregion
-export { type AgentAskParams, type AgentTaskParams, Config, type ConnectParams, type DeviceId, type DeviceIdentity, type DeviceToken, type DeviceTokenStore, FedCapability, type FedCapability as FedCapabilityType, type FedError, FedErrorCode, type FedEvent, type FedEventAck, FedEvent$1 as FedEventCatalog, type FedFrame, FedMethod, FedProtocolService, type FedRequest, type FedResponse, type FedWireFrame, type HelloOk, type HostStateDigest, IDEMPOTENT_METHODS, type IssuedToken, MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, type PeerRole, type TaskState, apply, asDeviceToken, authenticate, decodeFrame, fedError, hashToken, issueDeviceToken, name, negotiateProtocol, requiresIdempotencyKey, sanitizeAdvertisedCaps, toFedError, tokenHashesEqual };
+export { type AgentAskParams, type AgentTaskParams, type AuthenticateParams, type AuthorizationFailure, type ChallengeOk, Config, type ConnectParams, type DeviceId, FedCapability, type FedCapability as FedCapabilityType, type FedError, FedErrorCode, type FedEvent, type FedEventAck, FedEvent$1 as FedEventCatalog, type FedFrame, FedMethod, FedProtocolService, type FedRequest, type FedResponse, type FedWireFrame, type HandshakeProof, type HelloOk, type HostStateDigest, IDEMPOTENT_METHODS, MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, type PeerAnnouncement, type PeerIdentity, type PeerIdentityMaterial, type PeerRole, type PendingTrust, type PrivateKeyPem, type PublicKeyB64, type TaskState, type TrustApprovalOutcome, type TrustApproveParams, type TrustPersistence, type TrustSnapshot, type TrustStore, TrustTable, type TrustedPeerRow, apply, authorize, computeSas, createNonce, decodeFrame, deriveDeviceId, fedError, formatDeviceId, generateIdentity, isFedCapability, localTokenMatches, name, negotiateProtocol, requiresIdempotencyKey, restoreIdentity, sanitizeAdvertisedCaps, signHandshake, toFedError, verifyHandshake };
 //# sourceMappingURL=index.d.ts.map
