@@ -850,7 +850,10 @@ function apply(ctx, config = {}) {
 	c.provide("fedHost", handle);
 	if (typeof c.inject === "function") c.inject(["settings"], (scoped) => {
 		const settings = scoped.settings;
-		if (settings === void 0) return;
+		if (settings === void 0) {
+			console.log("[hive-fed-host] settings service unavailable; running without a settings surface");
+			return;
+		}
 		const base = {
 			gatewayUrl: currentConfig.gatewayUrl ?? "ws://127.0.0.1:3081/fed",
 			deviceName: currentConfig.deviceName ?? "",
@@ -858,7 +861,20 @@ function apply(ctx, config = {}) {
 			stateIntervalMs: currentConfig.stateIntervalMs ?? 15e3
 		};
 		let source = () => base;
-		settings.installSection(ctx, HOST_SETTINGS_NS, HostSettingsSchema, base, {
+		const installSection = (service, ns, schema, entry, hooks) => {
+			if (typeof service.installSection === "function") {
+				service.installSection(ctx, ns, schema, entry, hooks);
+				return true;
+			}
+			if (typeof service.register !== "function") return false;
+			const scope = service.register(ns, schema, { base: entry });
+			if (scope === void 0 || typeof scope.get !== "function") return false;
+			hooks.setSource(() => scope.get());
+			hooks.onChange();
+			scope.watch?.(() => hooks.onChange());
+			return true;
+		};
+		const installed = installSection(settings, HOST_SETTINGS_NS, HostSettingsSchema, base, {
 			setSource: (current) => {
 				source = current;
 			},
@@ -873,6 +889,7 @@ function apply(ctx, config = {}) {
 				restart();
 			}
 		});
+		console.log(`[hive-fed-host] settings section installed: ${installed}`);
 	});
 }
 //#endregion

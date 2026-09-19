@@ -185,3 +185,27 @@ build/
   「standalone 运行器」与「dsh 插件」共用同一个设备身份**——换起法不需重新配对
 - 债：表单机制与 fed-gateway 的浏览器半侧重复（client 包纯度门禁禁止互相 import，
   故有意重复）；等第三张卡出现时抽共享包
+
+## D-019 跨 dsh 版本兼容：双席位注册 + 自适应设置节安装
+- 背景：.19 那台机器跑的是 dsh **0.1.1-rc.2**（比本机 alpha.2 早三代），实测"插件功能全通但没有配置卡片"
+- 客户端半侧差异（两代席位完全不同，已实测）：
+  | 版本 | 席位 | key | 组件 props |
+  |---|---|---|---|
+  | 0.1.1-rc.2 / 0.1.6-alpha.1 | `settings.plugin.item`（设置→插件→插件配置） | **命名空间** | **无 view**（卡片自带外观） |
+  | 0.1.6-alpha.2+ | `plugins.row.config`（插件页→组件行） | `<包名>#<行id>` | `view: 'summary' \| 'page'` |
+  - 决策：**两个席位都注册**，未声明的席位永不派发 → 天然自适应，不锁版本（符合"兼容 dsh"目标）
+- 宿主半侧差异（更隐蔽，异常被 cordis 吞掉）：
+  - alpha.2：`ctx.settings.installSection(owner, ns, schema, entry, hooks)`（服务上的方法）
+  - 0.1.1：`installSettingsSection(ctx, ns, schema, entry, hooks)`（**包导出函数**，服务上没有这个方法）
+  - 照旧写法在 0.1.1 上抛 `settings.installSection is not a function`，被吞 → 表现"插件能用但没界面"
+  - 决策：写**自适应安装器**——优先用服务方法，缺失时回落到两版共有的底层
+    `settings.register(ns, schema, { base })` + `scope.get()` / `scope.watch()`；
+    **不 import** `dsh-settings`（插件包没有该依赖，运行时会解析失败）
+- 两版一致的部分（无需适配）：`setSource(current: () => T)` 活 thunk + `onChange()`；
+  客户端 `settingsScope.describe()`；服务名 `settings`；cordis `ctx.inject(deps, cb)`
+- 验收（同一份产物，两个版本都对）：
+  - .19（0.1.1）：设置→插件→插件配置 出现「hive 主机接入」卡片；改设备名保存 → 宿主日志
+    `settings changed` → 重连并以上报名 `PC-19-A` 出现在审计里
+  - 本机（alpha.2）：插件页组件行卡片照常（`监听 0.0.0.0:3081 · 已覆盖`），零回归
+- 运维事实：SSH 会话启动的进程会随会话断开被杀（须用 WMI `Win32_Process Create` 才能脱离）；
+  目标机执行策略禁 `.ps1`（npm/pnpm 走 `.cmd`）；这两条已记入 `dsh-version-compat` 记忆

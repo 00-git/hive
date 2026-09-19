@@ -82,7 +82,10 @@ export function apply(ctx: unknown, config: Config = {}): void {
           },
         ) => void
       } }).settings
-      if (settings === undefined) return
+      if (settings === undefined) {
+        console.log('[hive-fed-host] settings service unavailable; running without a settings surface')
+        return
+      }
       const base: HostSettings = {
         gatewayUrl: currentConfig.gatewayUrl ?? 'ws://127.0.0.1:3081/fed',
         deviceName: currentConfig.deviceName ?? '',
@@ -94,12 +97,38 @@ export function apply(ctx: unknown, config: Config = {}): void {
         stateIntervalMs: currentConfig.stateIntervalMs ?? 15_000,
       }
       let source: () => Partial<HostSettings> = () => base
-      settings.installSection(ctx, HOST_SETTINGS_NS, HostSettingsSchema, base, {
+      // alpha.2 exposes the canonical helper as a method on the settings
+      // service; dsh 0.1.1 shipped it as a package export (`installSettingsSection`)
+      // and never put it on the service, so calling the method there fails with
+      // "installSection is not a function" and the deployment silently loses its
+      // settings surface. Both versions build the helper on the same low-level
+      // `register(ns, schema, { base })` + `scope.watch` pair, which is what the
+      // fallback uses.
+      const installSection = (
+        service: Record<string, unknown>,
+        ns: string,
+        schema: unknown,
+        entry: unknown,
+        hooks: { setSource: (current: () => HostSettings) => void; onChange: () => void },
+      ): boolean => {
+        if (typeof service.installSection === 'function') {
+          ;(service.installSection as (c: unknown, n: string, s: unknown, e: unknown, h: unknown) => void)(ctx, ns, schema, entry, hooks)
+          return true
+        }
+        if (typeof service.register !== 'function') return false
+        const scope = (service.register as (n: string, s: unknown, o: unknown) => { get?: () => HostSettings; watch?: (cb: () => void) => void })(ns, schema, { base: entry })
+        if (scope === undefined || typeof scope.get !== 'function') return false
+        hooks.setSource(() => scope.get!())
+        hooks.onChange()
+        scope.watch?.(() => hooks.onChange())
+        return true
+      }
+
+      const installed = installSection(settings as unknown as Record<string, unknown>, HOST_SETTINGS_NS, HostSettingsSchema, base, {
         setSource: (current) => {
-          // alpha.2 hands a STABLE thunk answering the currently authoritative
-          // value. Holding the thunk — not a snapshot of its first answer — is
-          // what lets a committed edit reach the reconnection, because
-          // `scope.watch` fires `onChange` without re-running `setSource`.
+          // Handed a STABLE thunk answering the currently authoritative value;
+          // holding the thunk (not a snapshot) is what lets a committed edit
+          // reach the reconnection.
           source = current
         },
         onChange: () => {
@@ -109,6 +138,7 @@ export function apply(ctx: unknown, config: Config = {}): void {
           restart()
         },
       })
+      console.log(`[hive-fed-host] settings section installed: ${installed}`)
     })
   }
 }

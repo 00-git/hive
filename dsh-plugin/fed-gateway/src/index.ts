@@ -119,8 +119,45 @@ export function apply(ctx: unknown, config: Config = {}): void {
        * re-running `setSource`.
        */
       let source: () => Partial<GatewaySettings> = () => entry
-      try {
-        settings.installSection(ctx, GATEWAY_SETTINGS_NS, GatewaySettingsSchema, entry, {
+      /**
+       * alpha.2 exposes the canonical helper as a method on the settings service;
+       * dsh 0.1.1 shipped it as a package export (`installSettingsSection`) and
+       * never put it on the service, so calling the method there fails with
+       * "installSection is not a function" and the deployment silently loses its
+       * settings surface. Both versions build the helper on the same low-level
+       * `register(ns, schema, { base })` + `scope.watch` pair.
+       */
+      const installSection = (
+        service: Record<string, unknown>,
+        ns: string,
+        schema: unknown,
+        initial: unknown,
+        hooks: {
+          validate?: (value: unknown) => void
+          setSource: (current: () => GatewaySettings) => void
+          onChange: () => void
+        },
+      ): boolean => {
+        if (typeof service.installSection === 'function') {
+          ;(service.installSection as (c: unknown, n: string, s: unknown, e: unknown, h: unknown) => void)(ctx, ns, schema, initial, hooks)
+          return true
+        }
+        if (typeof service.register !== 'function') return false
+        const scope = (service.register as (n: string, s: unknown, o: unknown) => {
+          get?: () => GatewaySettings
+          watch?: (cb: () => void) => void
+        })(ns, schema, {
+          base: initial,
+          ...(hooks.validate === undefined ? {} : { validate: hooks.validate }),
+        })
+        if (scope === undefined || typeof scope.get !== 'function') return false
+        hooks.setSource(() => scope.get!())
+        hooks.onChange()
+        scope.watch?.(() => hooks.onChange())
+        return true
+      }
+
+      const installed = installSection(settings as unknown as Record<string, unknown>, GATEWAY_SETTINGS_NS, GatewaySettingsSchema, entry, {
           validate: (value) => {
             const port = (value as GatewaySettings).port
             if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -143,13 +180,8 @@ export function apply(ctx: unknown, config: Config = {}): void {
             currentConfig = next
             restart()
           },
-        })
-      } catch (error) {
-        // A failed install leaves the plugin running without its settings
-        // surface. Say so loudly: an escaping error here also takes the
-        // namespace registration down, so the Plugins page loses the card too.
-        console.error(`[hive-fed-gateway] settings section could not be installed: ${String((error as Error)?.message ?? error)}`)
-      }
+      })
+      console.log(`[hive-fed-gateway] settings section installed: ${installed}`)
     })
   }
 }

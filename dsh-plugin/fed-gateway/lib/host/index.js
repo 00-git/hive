@@ -879,31 +879,52 @@ function apply(ctx, config = {}) {
 		* re-running `setSource`.
 		*/
 		let source = () => entry;
-		try {
-			settings.installSection(ctx, GATEWAY_SETTINGS_NS, GatewaySettingsSchema, entry, {
-				validate: (value) => {
-					const port = value.port;
-					if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("端口必须是 1-65535 的整数");
-				},
-				setSource: (current) => {
-					source = current;
-					console.log(`[hive-fed-gateway] settings source attached: ${JSON.stringify(source() ?? {})}`);
-				},
-				onChange: () => {
-					const next = normalizeConfig({
-						...config,
-						...defaults,
-						...source() ?? {}
-					});
-					if (next.port === currentConfig.port && next.bindHost === currentConfig.bindHost) return;
-					console.log(`[hive-fed-gateway] settings changed: port=${next.port} bindHost=${next.bindHost}; restarting listener`);
-					currentConfig = next;
-					restart();
-				}
+		/**
+		* alpha.2 exposes the canonical helper as a method on the settings service;
+		* dsh 0.1.1 shipped it as a package export (`installSettingsSection`) and
+		* never put it on the service, so calling the method there fails with
+		* "installSection is not a function" and the deployment silently loses its
+		* settings surface. Both versions build the helper on the same low-level
+		* `register(ns, schema, { base })` + `scope.watch` pair.
+		*/
+		const installSection = (service, ns, schema, initial, hooks) => {
+			if (typeof service.installSection === "function") {
+				service.installSection(ctx, ns, schema, initial, hooks);
+				return true;
+			}
+			if (typeof service.register !== "function") return false;
+			const scope = service.register(ns, schema, {
+				base: initial,
+				...hooks.validate === void 0 ? {} : { validate: hooks.validate }
 			});
-		} catch (error) {
-			console.error(`[hive-fed-gateway] settings section could not be installed: ${String(error?.message ?? error)}`);
-		}
+			if (scope === void 0 || typeof scope.get !== "function") return false;
+			hooks.setSource(() => scope.get());
+			hooks.onChange();
+			scope.watch?.(() => hooks.onChange());
+			return true;
+		};
+		const installed = installSection(settings, GATEWAY_SETTINGS_NS, GatewaySettingsSchema, entry, {
+			validate: (value) => {
+				const port = value.port;
+				if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("端口必须是 1-65535 的整数");
+			},
+			setSource: (current) => {
+				source = current;
+				console.log(`[hive-fed-gateway] settings source attached: ${JSON.stringify(source() ?? {})}`);
+			},
+			onChange: () => {
+				const next = normalizeConfig({
+					...config,
+					...defaults,
+					...source() ?? {}
+				});
+				if (next.port === currentConfig.port && next.bindHost === currentConfig.bindHost) return;
+				console.log(`[hive-fed-gateway] settings changed: port=${next.port} bindHost=${next.bindHost}; restarting listener`);
+				currentConfig = next;
+				restart();
+			}
+		});
+		console.log(`[hive-fed-gateway] settings section installed: ${installed}`);
 	});
 }
 //#endregion

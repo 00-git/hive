@@ -24,10 +24,22 @@ import { useEffect, useState } from 'react'
 
 /** Settings namespace the gateway's Host half installs. */
 const NS = 'hive-gateway'
-/** The Plugins page's seat for one row's configuration. */
-const SLOT = 'plugins.row.config'
-/** `<package>#<rowId>`, spelled as this bundle's cordis.patch.yml declares the row. */
-const SEAT_KEY = 'hive-fed-gateway#hive-fed-gateway/host'
+/**
+ * alpha.2's seat: one row's configuration on the Plugins page, keyed
+ * `<package>#<rowId>` as this bundle's cordis.patch.yml declares the row. The
+ * page asks for `summary` (the one-liner) and `page` (the form).
+ */
+const SLOT_ROW = 'plugins.row.config'
+const KEY_ROW = 'hive-fed-gateway#hive-fed-gateway/host'
+/**
+ * Pre-alpha.2 seat: the Plugins settings section's card list, keyed by the
+ * settings namespace the card edits, with no view to answer — the card owns its
+ * own chrome. dsh 0.1.1-rc.2 and 0.1.6-alpha.1 declare this one.
+ *
+ * Both are registered: a seat no deployment declares never dispatches, so one
+ * bundle serves every dsh version in the fleet instead of pinning a version.
+ */
+const SLOT_CARD = 'settings.plugin.item'
 
 /** Client-side state of one settings namespace. */
 interface ScopeSnapshot {
@@ -342,9 +354,12 @@ function Summary(props: { snapshot: ScopeSnapshot }): React.ReactElement {
 }
 
 /**
- * The row's configuration entry: the one-liner the row's page shows under its
- * name, or the form the page shows as its body.
- * @param props - the view the page asks for and the scope its registration injects.
+ * The configuration entry. Two deployments ask two different questions:
+ * alpha.2's Plugins page asks for a one-liner (`summary`) or its own page's body
+ * (`page`, where the page draws the title), while the older card list asks for
+ * nothing and expects a self-contained card.
+ * @param props - the view the page asks for (absent on the older seat) and the
+ * scope its registration injects.
  * @returns the one-liner, the form, or null while the namespace is not served.
  */
 export function HiveGatewayRow(props: { view?: 'summary' | 'page'; scope: ScopeLike }): React.ReactElement | null {
@@ -353,14 +368,22 @@ export function HiveGatewayRow(props: { view?: 'summary' | 'page'; scope: ScopeL
   const form = useCardForm(scope, snapshot)
   if (snapshot.status === 'unavailable') return null
   if (view === 'summary') return <Summary snapshot={snapshot} />
-  return <Card form={form} snapshot={snapshot} />
+  const card = <Card form={form} snapshot={snapshot} />
+  if (view === 'page') return card
+  return (
+    <div style={{ padding: '4px 0' }}>
+      <div style={LABEL}>hive 联邦网关</div>
+      <div style={HINT}>局域网内唯一的联邦入口；改动保存后立即重启监听。</div>
+      {card}
+    </div>
+  )
 }
 
 export const inject = ['slots', 'locale', 'remote', 'settingsScope']
 
 /**
- * Mount the row's configuration seat while the Host serves the gateway
- * namespace, and retire it when the namespace goes away.
+ * Mount the card into every seat this deployment declares, while the Host
+ * serves the gateway namespace, and retire them when either goes away.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: unknown): void {
@@ -380,28 +403,38 @@ export function apply(ctx: unknown): void {
   const scope = c.settingsScope.bind({ namespace: NS })
   const face = c.settingsScope.describe()
 
-  let mounted: (() => void) | undefined
-  const sync = (): void => {
-    const served = new Set(face.getSnapshot().view?.namespaces.map((view) => view.ns) ?? [])
-    if (served.has(NS) && mounted === undefined) {
-      mounted = slots.inject(SLOT, () => slots.register({
-        name: SLOT,
-        key: SEAT_KEY,
+  /** Register one seat, tolerating a seat this dsh does not declare at all. */
+  const mount = (slot: string, key: string): (() => void) | undefined => {
+    try {
+      return slots.inject(slot, () => slots.register({
+        name: slot,
+        key,
         inject: () => ({ scope }),
       }, HiveGatewayRow)) as () => void
-    } else if (!served.has(NS) && mounted !== undefined) {
-      mounted()
-      mounted = undefined
+    } catch {
+      // An unknown slot name only means this deployment never had that seat.
+      return undefined
+    }
+  }
+
+  let mounted: Array<() => void> = []
+  const sync = (): void => {
+    const served = new Set(face.getSnapshot().view?.namespaces.map((view) => view.ns) ?? [])
+    if (served.has(NS) && mounted.length === 0) {
+      mounted = [mount(SLOT_ROW, KEY_ROW), mount(SLOT_CARD, NS)].filter((off): off is () => void => typeof off === 'function')
+    } else if (!served.has(NS) && mounted.length > 0) {
+      for (const off of mounted) off()
+      mounted = []
     }
   }
 
   const unsubscribe = face.subscribe(sync)
   const teardown = (): void => {
     unsubscribe()
-    mounted?.()
-    mounted = undefined
+    for (const off of mounted) off()
+    mounted = []
   }
   void face.ensure()
   sync()
-  c.effect?.(() => teardown, 'hive-fed-gateway: row configuration seat')
+  c.effect?.(() => teardown, 'hive-fed-gateway: configuration seats')
 }

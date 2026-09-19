@@ -30,8 +30,9 @@ module.exports = __toCommonJS(index_exports);
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
 var NS = "hive-gateway";
-var SLOT = "plugins.row.config";
-var SEAT_KEY = "hive-fed-gateway#hive-fed-gateway/host";
+var SLOT_ROW = "plugins.row.config";
+var KEY_ROW = "hive-fed-gateway#hive-fed-gateway/host";
+var SLOT_CARD = "settings.plugin.item";
 var FIELDS = [
   {
     field: "port",
@@ -228,7 +229,13 @@ function HiveGatewayRow(props) {
   const form = useCardForm(scope, snapshot);
   if (snapshot.status === "unavailable") return null;
   if (view === "summary") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Summary, { snapshot });
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Card, { form, snapshot });
+  const card = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Card, { form, snapshot });
+  if (view === "page") return card;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "4px 0" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: LABEL, children: "hive \u8054\u90A6\u7F51\u5173" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: HINT, children: "\u5C40\u57DF\u7F51\u5185\u552F\u4E00\u7684\u8054\u90A6\u5165\u53E3\uFF1B\u6539\u52A8\u4FDD\u5B58\u540E\u7ACB\u5373\u91CD\u542F\u76D1\u542C\u3002" }),
+    card
+  ] });
 }
 var inject = ["slots", "locale", "remote", "settingsScope"];
 function apply(ctx) {
@@ -237,29 +244,36 @@ function apply(ctx) {
   const slots = c.slots;
   const scope = c.settingsScope.bind({ namespace: NS });
   const face = c.settingsScope.describe();
-  let mounted;
-  const sync = () => {
-    const served = new Set(face.getSnapshot().view?.namespaces.map((view) => view.ns) ?? []);
-    if (served.has(NS) && mounted === void 0) {
-      mounted = slots.inject(SLOT, () => slots.register({
-        name: SLOT,
-        key: SEAT_KEY,
+  const mount = (slot, key) => {
+    try {
+      return slots.inject(slot, () => slots.register({
+        name: slot,
+        key,
         inject: () => ({ scope })
       }, HiveGatewayRow));
-    } else if (!served.has(NS) && mounted !== void 0) {
-      mounted();
-      mounted = void 0;
+    } catch {
+      return void 0;
+    }
+  };
+  let mounted = [];
+  const sync = () => {
+    const served = new Set(face.getSnapshot().view?.namespaces.map((view) => view.ns) ?? []);
+    if (served.has(NS) && mounted.length === 0) {
+      mounted = [mount(SLOT_ROW, KEY_ROW), mount(SLOT_CARD, NS)].filter((off) => typeof off === "function");
+    } else if (!served.has(NS) && mounted.length > 0) {
+      for (const off of mounted) off();
+      mounted = [];
     }
   };
   const unsubscribe = face.subscribe(sync);
   const teardown = () => {
     unsubscribe();
-    mounted?.();
-    mounted = void 0;
+    for (const off of mounted) off();
+    mounted = [];
   };
   void face.ensure();
   sync();
-  c.effect?.(() => teardown, "hive-fed-gateway: row configuration seat");
+  c.effect?.(() => teardown, "hive-fed-gateway: configuration seats");
 }
 
 return module.exports; } });

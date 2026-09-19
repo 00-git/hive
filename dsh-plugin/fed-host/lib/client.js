@@ -30,8 +30,9 @@ module.exports = __toCommonJS(index_exports);
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
 var NS = "hive-host";
-var SLOT = "plugins.row.config";
-var SEAT_KEY = "hive-fed-host#hive-fed-host/host";
+var SLOT_ROW = "plugins.row.config";
+var KEY_ROW = "hive-fed-host#hive-fed-host/host";
+var SLOT_CARD = "settings.plugin.item";
 function textField(text) {
   const trimmed = text.trim();
   return trimmed === "" ? { kind: "clear" } : { kind: "set", value: trimmed };
@@ -239,7 +240,13 @@ function HiveHostRow(props) {
   const form = useCardForm(scope, snapshot);
   if (snapshot.status === "unavailable") return null;
   if (view === "summary") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Summary, { snapshot });
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Card, { form, snapshot });
+  const card = /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Card, { form, snapshot });
+  if (view === "page") return card;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "4px 0" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: LABEL, children: "hive \u4E3B\u673A\u63A5\u5165" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: HINT, children: "\u8FD9\u53F0\u7535\u8111\u8FDE\u5411\u8054\u90A6\u7F51\u5173\u7684\u53C2\u6570\uFF1B\u5FC5\u987B\u81EA\u5907 fs.read \u767D\u540D\u5355\u76EE\u5F55\u3002" }),
+    card
+  ] });
 }
 var inject = ["slots", "locale", "remote", "settingsScope"];
 function apply(ctx) {
@@ -248,29 +255,36 @@ function apply(ctx) {
   const slots = c.slots;
   const scope = c.settingsScope.bind({ namespace: NS });
   const face = c.settingsScope.describe();
-  let mounted;
-  const sync = () => {
-    const served = new Set(face.getSnapshot().view?.namespaces.map((view) => view.ns) ?? []);
-    if (served.has(NS) && mounted === void 0) {
-      mounted = slots.inject(SLOT, () => slots.register({
-        name: SLOT,
-        key: SEAT_KEY,
+  const mount = (slot, key) => {
+    try {
+      return slots.inject(slot, () => slots.register({
+        name: slot,
+        key,
         inject: () => ({ scope })
       }, HiveHostRow));
-    } else if (!served.has(NS) && mounted !== void 0) {
-      mounted();
-      mounted = void 0;
+    } catch {
+      return void 0;
+    }
+  };
+  let mounted = [];
+  const sync = () => {
+    const served = new Set(face.getSnapshot().view?.namespaces.map((view) => view.ns) ?? []);
+    if (served.has(NS) && mounted.length === 0) {
+      mounted = [mount(SLOT_ROW, KEY_ROW), mount(SLOT_CARD, NS)].filter((off) => typeof off === "function");
+    } else if (!served.has(NS) && mounted.length > 0) {
+      for (const off of mounted) off();
+      mounted = [];
     }
   };
   const unsubscribe = face.subscribe(sync);
   const teardown = () => {
     unsubscribe();
-    mounted?.();
-    mounted = void 0;
+    for (const off of mounted) off();
+    mounted = [];
   };
   void face.ensure();
   sync();
-  c.effect?.(() => teardown, "hive-fed-host: row configuration seat");
+  c.effect?.(() => teardown, "hive-fed-host: configuration seats");
 }
 
 return module.exports; } });
