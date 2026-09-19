@@ -15,8 +15,6 @@
 
 在 dsh 输入框粘贴下面整段。
 
-提示词必须自足：agent 在全新机器上没有任何前置知识，也不持有本仓库，因此地址与取源方式要写进提示词本身。
-
 ```
 获取仓库 https://github.com/00-git/hive
 （git clone；若 github.com:443 不通，改用 https://codeload.github.com/00-git/hive/zip/refs/heads/main 解压）
@@ -89,21 +87,20 @@ node <REPO>/dsh-plugin/fed-gateway/bin/hive-p2p.mjs join --node <本机昵称>
 
 ## 配对
 
-握手完成后，双方各自显示一个 6 位数字（SAS），由两台机器**各自的公钥**推导得出。
+握手完成后，双方各自显示一个 6 位数字（SAS），由两台机器各自的公钥推导得出。
 
-1. 在一台机器上执行 `hive-fedctl trust pending`，读取「本机 SAS」与设备 ID
-2. 请操作员比对两台机器**屏幕上**的两个数字
+1. 在一台机器上执行 `node <REPO>/dsh-plugin/fed-gateway/bin/hive-fedctl.mjs trust pending`，
+   读取「本机 SAS」与设备 ID
+2. 比对两台机器**屏幕上**的两个数字
 3. 一致 → 执行
    ```
-   hive-fedctl trust approve <设备ID> <另一端屏幕上显示的数字>
+   node <REPO>/dsh-plugin/fed-gateway/bin/hive-fedctl.mjs trust approve <设备ID> <另一端屏幕上显示的数字>
    ```
-4. **不一致 → 立即停止。** 不得重试、不得改用其他数字、不得视为偶发问题
+4. **不一致 → 立即停止。** 不得重试、不得改用其他数字
 
-两台机器各需确认一次。确认由本地信任表持久化，且不依赖 dsh 运行状态。
+两台机器各需确认一次。确认写入本地信任表，不依赖 dsh 运行状态。
 
-> 中间人转发真实公钥时无法通过签名校验（无对应私钥）；改用自身公钥时两端 SAS 不同。
-> 因此 SAS 比对是仅存的检测手段，且只能由人完成。
-> 若输入**本机屏幕**上的数字，等于确认攻击者。
+> 必须输入**另一端屏幕**上的数字。输入本机屏幕上的数字等于确认攻击者。
 
 ---
 
