@@ -86,51 +86,51 @@ build/
 | δ֪�����ɷ���PC-99�� | ? task_not_found |
 | ���˫д��gateway audit.log + host host-audit.log�� | ? traceId ��ͨ |
 
-## D-011 ���ÿ���user ��Թ��������û�˿ڡ��Ļ�Ӧ��
-- ���������ע�� settings �ڣ�hive-gateway: port/bindHost��hive-host: gatewayUrl/deviceName/
-  whitelistDirs/stateIntervalMs����onChange ��ʱ��������/�������� dsh ������
-- ������룺fed-gateway �� src/client/index.tsx��esbuild ���� dsh �հ�������ʽ
-  ��window.__ModuleLoader__.load({id, factory(require)})����react Ϊ loader ע���ⲿ��
-- ʵ�⣺���� �� ������� ������Ⱦ��hive �������ء������ֶ��뵱ǰֵ��ȷ
-- ���죺��Ƭ writable=false������ģʽ���飬д��ͨ��δͨ����hive-host ��ͬ������ע��
-- schemastery �� dsh vendor ������src/vendor/schemastery.mjs������pnpm file: ָ��
-  dsh workspace �ڰ��ᴥ�� workspace ��������D-006 ���壩
+## D-011 ���ÿ���user ��Թ��������û�˿ڡ��Ļ�Ӧ��
+- ���������ע�� settings �ڣ�hive-gateway: port/bindHost��hive-host: gatewayUrl/deviceName/
+  whitelistDirs/stateIntervalMs����onChange ��ʱ��������/�������� dsh ������
+- ������룺fed-gateway �� src/client/index.tsx��esbuild ���� dsh �հ�������ʽ
+  ��window.__ModuleLoader__.load({id, factory(require)})����react Ϊ loader ע���ⲿ��
+- ʵ�⣺���� �� ������� ������Ⱦ��hive �������ء������ֶ��뵱ǰֵ��ȷ
+- ���죺��Ƭ writable=false������ģʽ���飬д��ͨ��δͨ����hive-host ��ͬ������ע��
+- schemastery �� dsh vendor ������src/vendor/schemastery.mjs������pnpm file: ָ��
+  dsh workspace �ڰ��ᴥ�� workspace ��������D-006 ���壩
 
-## D-012 OpenP2P ��������user ָ����ֱ����p2p����
-- bin/hive-p2p.mjs��init������ config.json��˽������ ShareBandwidth=0��PC ������
-  ����ת�� 127.0.0.1:3082 �� ���ؽڵ�:3081��+ run�����������ƣ�
-- �������Ķ���fed-host �� gatewayUrl ���� ws://127.0.0.1:3082/fed ���� P2P ����
-  ������ host ���ÿ���ģ����Ͽ��滻ԭ��
-- openp2p �����Ʋ��Զ����أ������������ƣ��������� ~/.hive/openp2p/openp2p.exe �� run
-- δ���������޷������������κη���ģ��/�����������˽Ҫ��
+## D-012 OpenP2P ��������user ָ����ֱ����p2p����
+- bin/hive-p2p.mjs��init������ config.json��˽������ ShareBandwidth=0��PC ������
+  ����ת�� 127.0.0.1:3082 �� ���ؽڵ�:3081��+ run�����������ƣ�
+- �������Ķ���fed-host �� gatewayUrl ���� ws://127.0.0.1:3082/fed ���� P2P ����
+  ������ host ���ÿ���ģ����Ͽ��滻ԭ��
+- openp2p �����Ʋ��Զ����أ������������ƣ��������� ~/.hive/openp2p/openp2p.exe �� run
+- δ���������޷������������κη���ģ��/�����������˽Ҫ��
 
-## D-013 ���س־û�����Ӧ ERR_CONNECTION_REFUSED -102 ���ϣ�
-- ����dsh ����δ���У�3080 �޼����������������������˿��޷��񡹣����������
-  ���ش�ǰΪ���ڴ�̬������ = user token �����ɣ�Web UI URL ʧЧ��+ �豸ע�����գ�������ԣ�
-- �޸���gateway-user-token ���������ļ����豸ע������� device-registry.json
-  ��ֻ�� token HASH + ����/caps��D-004 ���岻�䣩��register/revoke ʱԭ����д
-- ʵ�⣺�������� �� PC-2 �ִ洢 Token �Զ����� �� connect.host allow����������ԣ���
-  echo ����������Web UI URL �ȶ�
-- ��ά���壺�Ժ��ճ�ֻ�������������̣�dsh web + �� PC �� hive-fed-host����
-  �����һ���Զ���
+## D-013 ���س־û�����Ӧ ERR_CONNECTION_REFUSED -102 ���ϣ�
+- ����dsh ����δ���У�3080 �޼����������������������˿��޷��񡹣����������
+  ���ش�ǰΪ���ڴ�̬������ = user token �����ɣ�Web UI URL ʧЧ��+ �豸ע�����գ�������ԣ�
+- �޸���gateway-user-token ���������ļ����豸ע������� device-registry.json
+  ��ֻ�� token HASH + ����/caps��D-004 ���岻�䣩��register/revoke ʱԭ����д
+- ʵ�⣺�������� �� PC-2 �ִ洢 Token �Զ����� �� connect.host allow����������ԣ���
+  echo ����������Web UI URL �ȶ�
+- ��ά���壺�Ժ��ճ�ֻ�������������̣�dsh web + �� PC �� hive-fed-host����
+  �����һ���Զ���
 
-## D-014 ��׼�����л���user ָ�������Բ�Ҫ��Դ�빹����
-- ����ִ��ƫ�������Ի���ӦΪ�ٷ� npm ��������Դ�빹����Դ�빹�������� dsh �ڲ��Ų飩
-- ��׼������build\sandbox\dsh-standard\ �� npm i @deepseek-ai/dsh@alpha��0.1.6-alpha.2��
-  �����ͬ����registry ͨ���ɴGitHub release ͨ�����ɴﲻӰ�죩
-- ������node_modules\.bin\dsh.cmd web --no-open������·�����ã�npx �ڱ������ɿ���
-- ʵ�⣺�ٷ���ֱ�Ӽ��� web profile ��� hive-fed-protocol/gateway����Ķ�����
-  ���� 3081 ������PC-2 ƾ D-013 �־û�ע��������������ҳ����� DeepSeek Harness
-- �ٷ����������Դ� @deepseek-ai/schemastery ���� ���ÿ� Schema ��Ȼ���ݣ���֤ A ��Ա���ȷ��
+## D-014 ��׼�����л���user ָ�������Բ�Ҫ��Դ�빹����
+- ����ִ��ƫ�������Ի���ӦΪ�ٷ� npm ��������Դ�빹����Դ�빹�������� dsh �ڲ��Ų飩
+- ��׼������build\sandbox\dsh-standard\ �� npm i @deepseek-ai/dsh@alpha��0.1.6-alpha.2��
+  �����ͬ����registry ͨ���ɴGitHub release ͨ�����ɴﲻӰ�죩
+- ������node_modules\.bin\dsh.cmd web --no-open������·�����ã�npx �ڱ������ɿ���
+- ʵ�⣺�ٷ���ֱ�Ӽ��� web profile ��� hive-fed-protocol/gateway����Ķ�����
+  ���� 3081 ������PC-2 ƾ D-013 �־û�ע��������������ҳ����� DeepSeek Harness
+- �ٷ����������Դ� @deepseek-ai/schemastery ���� ���ÿ� Schema ��Ȼ���ݣ���֤ A ��Ա���ȷ��
 
-## D-015 alpha.2 UI ���죨��Ӧ���������ȥ�ˡ���
-- ���ȫ�����ڣ���׼������alpha.2����������������� �� �Ѱ�װ(2)��hive-fed-gateway��
-  hive-fed-protocol�������������ÿ��أ���ȫ�ֲ���б����߾��������á������� 3081 �����У�
-  PC-2 �����ӡ�֮ǰ 404 �ǲ��� URL ��ʽ������ʵ URL �� loader id �� rev ��ϣ��
-- alpha.2 �ع�������ҳ��alpha.1 �ġ�������á���ҳ��settings.plugin.item ����Ⱦ�����ٳ��֣�
-  ��Ϊ�����ò�����б� + �����������������壨�ٷ� dsh-plugin-manager��
-- ���죨�汾���䣩�����ǵ����ÿ������� alpha.2 ���¹��ص㣨����ɲ�����������ã���
-  Ӱ������������ UI�����ǲ�����ܱ���
+## D-015 alpha.2 UI ���죨��Ӧ���������ȥ�ˡ���
+- ���ȫ�����ڣ���׼������alpha.2����������������� �� �Ѱ�װ(2)��hive-fed-gateway��
+  hive-fed-protocol�������������ÿ��أ���ȫ�ֲ���б����߾��������á������� 3081 �����У�
+  PC-2 �����ӡ�֮ǰ 404 �ǲ��� URL ��ʽ������ʵ URL �� loader id �� rev ��ϣ��
+- alpha.2 �ع�������ҳ��alpha.1 �ġ�������á���ҳ��settings.plugin.item ����Ⱦ�����ٳ��֣�
+  ��Ϊ�����ò�����б� + �����������������壨�ٷ� dsh-plugin-manager��
+- ���죨�汾���䣩�����ǵ����ÿ������� alpha.2 ���¹��ص㣨����ɲ�����������ã���
+  Ӱ������������ UI�����ǲ�����ܱ���
 
 ## D-016 alpha.2 插件配置席位：改挂「插件页 → 组件行」席位
 - 现象：alpha.2 下我们原注册进 `settings.plugin.item` 的两张卡片完全不渲染
@@ -209,3 +209,47 @@ build/
   - 本机（alpha.2）：插件页组件行卡片照常（`监听 0.0.0.0:3081 · 已覆盖`），零回归
 - 运维事实：SSH 会话启动的进程会随会话断开被杀（须用 WMI `Win32_Process Create` 才能脱离）；
   目标机执行策略禁 `.ps1`（npm/pnpm 走 `.cmd`）；这两条已记入 `dsh-version-compat` 记忆
+
+## D-020 去中心化：自证身份 + SAS 互信（协议 v2，硬切）
+- 触发：user 指出「这是去中心化项目，没有 center server 时怎么同步」
+- **关键认识**：线协议**本来就是对称的** —— `#handleConnect` 只接受 `role: 'host' | 'user'`，
+  **接受方从不声明自己**。所以「谁都能当 gateway」在协议层已成立，gateway 是**角色**不是**服务器**。
+  真正的中心化只在三处：① 身份签发 ② 目录（registry） ③ 消息转发
+- user 决策（全部取严格档，均经提问确认）：
+  | 决策点 | 选定 |
+  |---|---|
+  | 去中心程度 | 只做拓扑 + 身份，状态暂不进 CRDT（每台机器单写自己，本身无冲突） |
+  | 首次见面信任 | **必须 SAS 指纹核对**，不做 TOFU |
+  | 旧 token | **硬切废弃**，现有两台机器重新配对 |
+  | listener 暴露面 | **只在 VPN 中暴露**；探测不到 VPN 地址就不开监听（fail-closed） |
+  | 派发权限 | **仅已配对的电脑**（信任表 = 派发白名单，一表两用） |
+  | 跨网 | 一律 OpenP2P；未注册者由程序自动获取二进制并引导注册 |
+  | 计划任务 | 手动在提权终端执行（不生成自提权脚本、不静默写系统） |
+- 身份模型：`deviceId = base32(sha256(公钥))[:16]`，密钥对自证，**无签发方**。
+  换密钥即换身份，因此**没有需要同步的吊销列表**；拒绝一个对端 = 本地删一行
+- **互相认证**（原设计的真实缺陷）：初版只有拨号方签名 → **接受方可被冒充**。
+  改为双方互相挑战（acceptor 签 dialer 的 clientNonce，搭在 challenge 帧上），往返数不变
+- **SAS 为什么有效**（已推演 + 测试覆盖）：中间人转发真公钥 → 无对应私钥 → 签名失败；
+  改用自身公钥 → 两端 SAS 不同。两条路都堵死。残余风险是**流程性**的：
+  操作员若输入**本机屏幕**上的数字 = 确认攻击者（文档与提示词均写死此警告）
+- 信任表是**文件即共享介质**：同一台机器上网关与主机是两个进程，共享 `trusted-peers.json`；
+  每次操作前重读，两个进程无需网络即可收敛。CLI 因此是纯文件读写器，dsh 没开也能批准。
+  代价：批准来自**另一个进程**，没有回调可挂 → 双方各加 2s 轮询扫描才让决策对**活跃连接**生效
+  （撤销尤其不能等重连）
+- E2E 抓到的两个真实缺陷（`fed-gateway/verify-two-node.mjs`，单机双节点）：
+  1. 拨号方把**自己的昵称**当成对端的 —— `hello.peer` 描述的是拨号方自己，且接受方昵称原本
+     根本没在协议里传过。修：`ChallengeOk.acceptorNickname` + `HandshakeDeps.selfNickname`
+  2. **撤销后对端仍显示在线** —— 撤销时提前 `#peerConns.delete`，使 close 处理器
+     `if (get(id) !== conn) return` 提前返回，`registry.unbind` 永不执行。修：新增 `#dropPeer()`
+- **跨包 branded 类型陷阱**（编译期真实故障，值得记）：`fed-peer` 若把 `fed-protocol`
+  内联进自己的 `.d.ts`，TS 会看到两份 `DeviceId` 且**互相不可赋值**。修法：
+  1. `fed-peer` 的 tsdown 用 `outDir: 'lib'` + `external: [/fed-protocol/]`
+     （相对路径 `../../fed-protocol` 从 `lib/` 出发才解析得到）
+  2. **gateway/host 只从 `../../fed-peer/lib/index.js` 导入**，绝不直接导 `fed-protocol`
+- 验证：三套共 **94 项断言全绿**（身份 43 + 握手 34 + 单机双节点 17），
+  覆盖：签名重放/角色互换/密钥掉包/被替换的 SAS/未验证即排队/nonce 作废/撤销切断活跃连接
+- 交付形态：`build/README.md` 承载完整安装流程，提示词**自足**（自带仓库地址与取源回退，
+  因为 agent 在全新机器上不持有本仓库）；两处必须人工：输入 OpenP2P 账号密码、比对 SAS
+- 已知债：`openp2p.exe` 声明 `requireAdministrator`，启动必须人工提权一次（获取二进制已全自动）；
+  网关/主机 bundle 各自内联协议副本（branded 类型不受影响，但因导入路径统一故无实际冲突）
+
