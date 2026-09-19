@@ -1,2 +1,5 @@
 /.tools
 /sandbox
+# fed-peer 的 node_modules 是指向 fed-protocol 的 junction，跟踪它会把同样的
+# 1892 个文件重复提交一份。它只在重建 fed-peer 时需要；运行时两个插件各自内联。
+/dsh-plugin/fed-peer/node_modules/
