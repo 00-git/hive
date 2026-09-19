@@ -1101,7 +1101,7 @@ var GatewayServer = class {
 			port: this.#cfg.port,
 			host
 		});
-		this.#wss.on("connection", (ws) => this.#onConnection(ws));
+		this.#wss.on("connection", (ws, request) => this.#onConnection(ws, request));
 		this.#wss.on("error", (error) => console.error(`[hive] listener error: ${error.message}`));
 		this.#logKnownPeers();
 		if (this.#trustTimer === void 0) this.#trustTimer = setInterval(() => this.#syncTrust(), TRUST_SYNC_INTERVAL_MS);
@@ -1152,12 +1152,13 @@ var GatewayServer = class {
 			this.#dropPeer(deviceId, "trust revoked");
 		}
 	}
-	#onConnection(ws) {
+	#onConnection(ws, request) {
 		const conn = {
 			ws,
 			kind: "pending",
 			acceptor: newAcceptorState(),
 			label: "unidentified",
+			remote: request?.socket?.remoteAddress ?? "unknown",
 			outSeq: 0,
 			ackedThrough: 0
 		};
@@ -1277,6 +1278,46 @@ var GatewayServer = class {
 			conn.ws.close();
 		}
 	}
+	/** Handshake failures per remote address, so a stuck peer cannot flood the audit log. */
+	#handshakeFailures = /* @__PURE__ */ new Map();
+	/**
+	* Decide whether a rejected handshake deserves a log line.
+	*
+	* A peer that fails the handshake is EXPECTED — an older build, a port scan, a
+	* half-configured machine — and its retry loop is not ours to control. Logging
+	* every attempt floods the audit log (measured: ~1.5 lines/second from one
+	* stuck client), which buries the entries that matter and fills the disk. So:
+	* the first few are logged in full, then one line per minute carrying the tally.
+	*/
+	#noteHandshakeFailure(conn, reason) {
+		const now = Date.now();
+		let record = this.#handshakeFailures.get(conn.remote);
+		if (record === void 0) {
+			if (this.#handshakeFailures.size > 512) this.#handshakeFailures.clear();
+			record = {
+				attempts: 0,
+				logged: 0,
+				lastLoggedAtMs: now
+			};
+			this.#handshakeFailures.set(conn.remote, record);
+		}
+		record.attempts += 1;
+		if (record.attempts > 3 && now - record.lastLoggedAtMs < 6e4) return;
+		const sinceLastLog = record.attempts - record.logged;
+		record.logged = record.attempts;
+		record.lastLoggedAtMs = now;
+		this.#audit.write({
+			ts: now,
+			actor: "unidentified",
+			action: "handshake.reject",
+			target: conn.remote,
+			decision: "deny",
+			detail: sinceLastLog > 1 ? {
+				reason,
+				attemptsSinceLastLog: sinceLastLog
+			} : reason
+		});
+	}
 	#handleConnect(conn, req) {
 		const params = req.params;
 		if (params?.role === "user") {
@@ -1314,14 +1355,7 @@ var GatewayServer = class {
 		const step = acceptorOnConnect(this.#deps(), conn.acceptor, req.params);
 		conn.acceptor = step.state;
 		if (!step.outcome.ok) {
-			this.#audit.write({
-				ts: Date.now(),
-				actor: conn.label,
-				action: "handshake.connect",
-				target: "listener",
-				decision: "deny",
-				detail: step.outcome.error.message
-			});
+			this.#noteHandshakeFailure(conn, step.outcome.error.message);
 			this.#replyError(conn, req.id, step.outcome.error);
 			conn.ws.close();
 			return;
@@ -1345,14 +1379,7 @@ var GatewayServer = class {
 		const step = acceptorOnAuthenticate(this.#deps(), conn.acceptor, req.params);
 		conn.acceptor = step.state;
 		if (!step.outcome.ok) {
-			this.#audit.write({
-				ts: Date.now(),
-				actor: conn.label,
-				action: "handshake.authenticate",
-				target: "listener",
-				decision: "deny",
-				detail: step.outcome.error.message
-			});
+			this.#noteHandshakeFailure(conn, step.outcome.error.message);
 			this.#replyError(conn, req.id, step.outcome.error);
 			conn.ws.close();
 			return;
@@ -1718,4 +1745,4 @@ var GatewayServer = class {
 //#endregion
 export { GatewayServer as t };
 
-//# sourceMappingURL=server-B7lCVy9H.js.map
+//# sourceMappingURL=server-zAsACzSu.js.map

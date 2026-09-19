@@ -77,6 +77,8 @@ interface ConnCtx {
   identity?: PeerIdentity
   /** Audit label: nickname once known, else the socket's own description. */
   label: string
+  /** Remote address, used to collapse repeated handshake failures into one line. */
+  remote: string
   outSeq: number
   ackedThrough: number
 }
@@ -194,7 +196,7 @@ export class GatewayServer {
     }
     const host = target.address
     this.#wss = new WebSocketServer({ port: this.#cfg.port, host })
-    this.#wss.on('connection', (ws) => this.#onConnection(ws))
+    this.#wss.on('connection', (ws, request) => this.#onConnection(ws, request))
     this.#wss.on('error', (error) => console.error(`[hive] listener error: ${error.message}`))
     this.#logKnownPeers()
     if (this.#trustTimer === undefined) {
@@ -242,12 +244,13 @@ export class GatewayServer {
     }
   }
 
-  #onConnection(ws: WebSocket): void {
+  #onConnection(ws: WebSocket, request?: { socket?: { remoteAddress?: string } }): void {
     const conn: ConnCtx = {
       ws,
       kind: 'pending',
       acceptor: newAcceptorState(),
       label: 'unidentified',
+      remote: request?.socket?.remoteAddress ?? 'unknown',
       outSeq: 0,
       ackedThrough: 0,
     }
@@ -349,6 +352,44 @@ export class GatewayServer {
     }
   }
 
+  /** Handshake failures per remote address, so a stuck peer cannot flood the audit log. */
+  readonly #handshakeFailures = new Map<string, { attempts: number; logged: number; lastLoggedAtMs: number }>()
+
+  /**
+   * Decide whether a rejected handshake deserves a log line.
+   *
+   * A peer that fails the handshake is EXPECTED — an older build, a port scan, a
+   * half-configured machine — and its retry loop is not ours to control. Logging
+   * every attempt floods the audit log (measured: ~1.5 lines/second from one
+   * stuck client), which buries the entries that matter and fills the disk. So:
+   * the first few are logged in full, then one line per minute carrying the tally.
+   */
+  #noteHandshakeFailure(conn: ConnCtx, reason: string): void {
+    const now = Date.now()
+    let record = this.#handshakeFailures.get(conn.remote)
+    if (record === undefined) {
+      // Crude bound: a wide scan must not grow this map without limit.
+      if (this.#handshakeFailures.size > 512) this.#handshakeFailures.clear()
+      record = { attempts: 0, logged: 0, lastLoggedAtMs: now }
+      this.#handshakeFailures.set(conn.remote, record)
+    }
+    record.attempts += 1
+    // Counter must NOT be reset on each log, or the "first few" rule matches
+    // forever and nothing is ever suppressed.
+    if (record.attempts > 3 && now - record.lastLoggedAtMs < 60_000) return
+    const sinceLastLog = record.attempts - record.logged
+    record.logged = record.attempts
+    record.lastLoggedAtMs = now
+    this.#audit.write({
+      ts: now,
+      actor: 'unidentified',
+      action: 'handshake.reject',
+      target: conn.remote,
+      decision: 'deny',
+      detail: sinceLastLog > 1 ? { reason, attemptsSinceLastLog: sinceLastLog } : reason,
+    })
+  }
+
   #handleConnect(conn: ConnCtx, req: FedRequest): void {
     const params = req.params as { role?: string; userToken?: string } | undefined
     if (params?.role === 'user') {
@@ -371,7 +412,7 @@ export class GatewayServer {
     const step = acceptorOnConnect(this.#deps(), conn.acceptor, req.params as ConnectParams | undefined)
     conn.acceptor = step.state
     if (!step.outcome.ok) {
-      this.#audit.write({ ts: Date.now(), actor: conn.label, action: 'handshake.connect', target: 'listener', decision: 'deny', detail: step.outcome.error.message })
+      this.#noteHandshakeFailure(conn, step.outcome.error.message)
       this.#replyError(conn, req.id, step.outcome.error)
       conn.ws.close()
       return
@@ -389,7 +430,7 @@ export class GatewayServer {
     const step = acceptorOnAuthenticate(this.#deps(), conn.acceptor, req.params as AuthenticateParams | undefined)
     conn.acceptor = step.state
     if (!step.outcome.ok) {
-      this.#audit.write({ ts: Date.now(), actor: conn.label, action: 'handshake.authenticate', target: 'listener', decision: 'deny', detail: step.outcome.error.message })
+      this.#noteHandshakeFailure(conn, step.outcome.error.message)
       this.#replyError(conn, req.id, step.outcome.error)
       conn.ws.close()
       return
