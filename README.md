@@ -13,10 +13,21 @@
 
 ## 快速开始
 
-在 dsh 输入框粘贴：
+在 dsh 输入框粘贴下面整段。
+
+提示词必须自足：agent 在全新机器上没有任何前置知识，也不持有本仓库，因此地址与取源方式要写进提示词本身。
 
 ```
-阅读仓库根目录 README.md，按「安装」执行；逐项询问我「配置」中的内容；按「配对」完成互信；最后按「验收」自查。
+获取仓库 https://github.com/00-git/hive
+（git clone；若 github.com:443 不通，改用 https://codeload.github.com/00-git/hive/zip/refs/heads/main 解压）
+
+阅读该仓库根目录 README.md，然后：
+1. 按「安装」把 hive 装到本机 dsh
+2. 逐项询问我「配置」中的内容
+3. 按「配对」与我完成互信
+4. 按「验收」自查并汇报
+
+执行期间遵守 README「约束」一节。
 ```
 
 ---
